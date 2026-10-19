@@ -8,7 +8,7 @@ import aiosqlite
 
 from snowcite.app import mcp
 from snowcite.db import get_connection
-from snowcite.persistence import resolve_cluster_paper_ids
+from snowcite.persistence import load_document_sections, resolve_cluster_paper_ids
 from snowcite.tools.common import paper_row_to_dict
 from snowcite.types import PER_PAPER_NOTE_TYPES, ReviewedBy, Source, Status
 
@@ -421,8 +421,8 @@ async def get_review_progress() -> dict[str, Any]:
     far the current state is from those targets plus a `warnings` list for
     anything below its floor.
 
-    Writing metrics (words, citations, density) come from `section_content`
-    rows; they're zero when no sections are written yet.
+    Writing metrics (words, citations, density) come from stored section
+    drafts; they're zero when no sections are written yet.
     """
     async with get_connection() as conn:
         counts = await _get_live_counts(conn)
@@ -437,13 +437,11 @@ async def get_review_progress() -> dict[str, Any]:
         meta = await cur.fetchone()
         targets = {k: meta[k] for k in meta.keys() if meta[k] is not None} if meta else {}
 
-        cur = await conn.execute("SELECT content FROM section_content")
-        section_rows = await cur.fetchall()
-
+    document_sections = await load_document_sections()
     total_words = 0
     total_cites = 0
-    for row in section_rows:
-        content = row["content"] or ""
+    for section in document_sections:
+        content = section["content"] or ""
         total_words += len(content.split())
         total_cites += _count_cites(content)
 
@@ -473,7 +471,7 @@ async def get_review_progress() -> dict[str, Any]:
             "words": total_words,
             "citations": total_cites,
             "citation_density_per_100_words": density,
-            "sections_with_content": len(section_rows),
+            "sections_with_content": len(document_sections),
         },
         "targets": targets,
         "warnings": warnings,

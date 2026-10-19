@@ -6,7 +6,6 @@ onboarded; callers also pass them explicitly for flexibility.
 """
 
 import asyncio
-import json
 import re
 import tempfile
 from pathlib import Path
@@ -21,7 +20,7 @@ from snowcite.bibliography import (
 )
 from snowcite.db import get_connection
 from snowcite.logging import log
-from snowcite.persistence import load_approved_papers
+from snowcite.persistence import load_approved_papers, load_document_sections
 from snowcite.projects import require_project_root
 from snowcite.templates import render_template
 from snowcite.types import Backend
@@ -53,9 +52,9 @@ def _pdf_page_count(pdf_bytes: bytes) -> int:
 
 @mcp.tool()
 async def write_document(
-    sections: list[dict[str, str]],
     title: str,
     author: str,
+    sections: list[dict[str, str]] | None = None,
     backend: Backend = "typst",
     standard: str = "plain",
     language: str = "ru",
@@ -63,8 +62,9 @@ async def write_document(
 ) -> dict[str, str]:
     """Render a review document (LaTeX or Typst) + bibliography from approved papers.
 
-    `sections`: list of `{"title", "content"}` — section content must already be
-      valid syntax for the chosen backend.
+    `sections`: optional list of `{"title", "content"}` — content must already be
+      valid syntax for the chosen backend. Omit it to build from the project's
+      stored sections (v0.3 drafts, or v0.2 section_content as a fallback).
 
     `backend`: "typst" (default) or "latex".
     `standard`: template to use — "plain" / "gost" / ... (see templates/{backend}/).
@@ -74,6 +74,8 @@ async def write_document(
     out = Path(output_dir) if output_dir else require_project_root()
     out.mkdir(parents=True, exist_ok=True)
     papers = await load_approved_papers()
+    if sections is None:
+        sections = await load_document_sections()
 
     # Rewrite `[N]` paper-id cites in each section to the backend's cite
     # syntax, using the same cite keys the bibliography will publish. Sections
@@ -189,36 +191,6 @@ async def compile_pdf(doc_path: str) -> dict[str, Any]:
 # ─── estimate_pages ─────────────────────────────────────────────────────────
 
 
-async def _load_sections_in_outline_order() -> list[dict[str, str]]:
-    """Fetch `section_content` rows, ordered by the current outline.
-
-    Sections not in the outline are appended at the end in alphabetical order
-    so they still count toward the page estimate. Empty DB returns [].
-    """
-    async with get_connection() as conn:
-        cur = await conn.execute("SELECT sections_json FROM outline WHERE id = 1")
-        outline_row = await cur.fetchone()
-        cur = await conn.execute("SELECT name, content FROM section_content")
-        rows = await cur.fetchall()
-
-    by_name = {r["name"]: r["content"] for r in rows}
-    if not by_name:
-        return []
-
-    ordered: list[dict[str, str]] = []
-    seen: set[str] = set()
-    if outline_row:
-        for entry in json.loads(outline_row["sections_json"]) or []:
-            name = entry.get("name") if isinstance(entry, dict) else entry
-            if name in by_name and name not in seen:
-                ordered.append({"title": name, "content": by_name[name]})
-                seen.add(name)
-    for name in sorted(by_name):
-        if name not in seen:
-            ordered.append({"title": name, "content": by_name[name]})
-    return ordered
-
-
 async def _load_project_defaults() -> dict[str, Any]:
     """Pull title/author/backend/standard/language + targets from project_metadata."""
     async with get_connection() as conn:
@@ -256,7 +228,7 @@ async def estimate_pages(
     title = "Draft preview"
     author = defaults.get("author") or "Author"
 
-    sections = await _load_sections_in_outline_order()
+    sections = await load_document_sections()
     if not sections:
         return {
             "pages": None,
@@ -325,7 +297,7 @@ async def set_backend(
     1. Call with `confirm_wipe_sections=False` (default) to see what would be
        lost. Returns a `needs_wipe` count; nothing is modified.
     2. If the user agrees, call again with `confirm_wipe_sections=True` to
-       delete `section_content` rows and update `project_metadata.backend`.
+       delete `section_content` rows, clear `sections.draft` and update `project_metadata.backend`.
        `outline` and `skeleton` are preserved — you re-expand sections under
        the new backend.
     """
@@ -335,7 +307,9 @@ async def set_backend(
         current = row["backend"] if row else None
 
         cur = await conn.execute("SELECT COUNT(*) FROM section_content")
-        section_count = (await cur.fetchone())[0]
+        legacy_count = (await cur.fetchone())[0]
+        cur = await conn.execute("SELECT COUNT(*) FROM sections WHERE draft != ''")
+        section_count = legacy_count + (await cur.fetchone())[0]
 
         if current == new_backend:
             return {"changed": False, "backend": new_backend, "reason": "already set"}
@@ -350,12 +324,16 @@ async def set_backend(
                     f"{section_count} expanded section(s) exist in {current!r} "
                     f"syntax; switching to {new_backend!r} will make them "
                     f"uncompilable. Call again with confirm_wipe_sections=True "
-                    f"to clear section_content (outline + skeleton survive)."
+                    f"to clear section drafts (outline + skeleton survive)."
                 ),
             }
 
         if section_count > 0:
             await conn.execute("DELETE FROM section_content")
+            await conn.execute(
+                "UPDATE sections SET draft = '', status = 'outline', blockers = 0, "
+                "should_fix = 0, nits = 0, critique_iterations = 0 WHERE draft != ''"
+            )
         await conn.execute(
             """
             INSERT INTO project_metadata (id, backend, updated_at)
