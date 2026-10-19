@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Layered package layout.** `domain/` (pure models, types, rules), `storage/` (`Database`, schema, repositories), `services/` (Review, Note, Section, Synthesis, Search, Citation, Build), `render/` (`DocumentBackend` with `TypstBackend`/`LatexBackend`, `Compiler`, bibliography, templates), `sources/` (`SourceClient` + one class per source), wired in `container.py`. MCP tools are thin wrappers over services; workflow invariants live in `domain/rules.py`.
+- **Layered package layout.** `domain/` (pure models, types, rules), `storage/` (`Database`, schema, repositories), `services/` (Review, Note, Section, Synthesis, Search, Citation, Artifact, Build), `render/` (`DocumentBackend` with `TypstBackend`/`LatexBackend`, `Compiler`, bibliography, templates), `sources/` (`SourceClient` + one class per source), wired in `container.py`. MCP tools are thin wrappers over services; workflow invariants live in `domain/rules.py`.
 - `write_document` takes `title`/`author` first and builds from stored section drafts when `sections` is omitted.
 - Session phases: `outline_proposed` / `outline_approved` / `skeleton_approved` replaced by `outlined`; phases derive from `sections`.
 
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Removed
 
 - The v0.2 writing pipeline: `save_outline`, `get_outline`, `approve_outline`, `save_skeleton`, `get_skeleton`, `approve_skeleton`, `check_section_drift`, `save_section`, `get_section_content`, `list_section_contents`, `polish_section`, `polish_document`, `regenerate_section_brief`, `prepare_section_for_review`. Use sections + the critique loop.
-- Per-section `artifact_ids` assignment (it lived in the outline). Artifacts are listed and fetched directly.
+- Per-section `artifact_ids` assignment (it lived in the outline). `get_section_critique_inputs` now returns every included artifact as a brief (id, citation label, summary — no content); fetch bodies with `get_artifact`.
 
 ### Migrated
 

@@ -2,6 +2,7 @@
 
 from snowcite.render.compiler import Compiler
 from snowcite.services import (
+    ArtifactService,
     BuildService,
     CitationService,
     NoteService,
@@ -17,6 +18,7 @@ from snowcite.sources.pubmed import PubMedSource
 from snowcite.sources.semantic_scholar import SemanticScholarSource
 from snowcite.storage.database import Database
 from snowcite.storage.repositories import (
+    ArtifactRepository,
     NoteRepository,
     PaperRepository,
     ProjectRepository,
@@ -34,6 +36,7 @@ class Container:
         self.reviews = ReviewRepository(self.db, self.notes)
         self.sections = SectionRepository(self.db)
         self.project = ProjectRepository(self.db)
+        self.artifacts = ArtifactRepository(self.db)
 
         self.review_service = ReviewService(self.reviews, self.sections, self.project)
         self.note_service = NoteService(self.notes)
@@ -51,9 +54,16 @@ class Container:
             citations=semantic_scholar,
         )
         self.section_service = SectionService(
-            self.sections, self.notes, self.papers, self.reviews, self.project, self.search
+            self.sections,
+            self.notes,
+            self.papers,
+            self.reviews,
+            self.project,
+            self.search,
+            self.artifacts,
         )
         self.synthesis = SynthesisService(self.notes, self.reviews)
+        self.artifact_service = ArtifactService(self.artifacts)
         self.citations = CitationService(self.sections)
         self.build = BuildService(self.papers, self.sections, self.project, Compiler())
 

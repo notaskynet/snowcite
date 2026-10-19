@@ -7,7 +7,6 @@ this module holds the pieces around them.
 from typing import Any
 
 from snowcite.app import mcp
-from snowcite.artifacts import list_artifacts as _list_artifacts_all, load_artifact
 from snowcite.container import container
 from snowcite.domain.citations import GAP_CHECK_MIN_WORDS
 from snowcite.domain.types import Backend
@@ -113,7 +112,7 @@ async def include_code_artifact(artifact_id: int, backend: Backend = "typst") ->
     `\\lstinputlisting` for LaTeX and `#raw(read(...))` for Typst; both read
     the file live from disk, so code changes propagate at compile time.
     """
-    a = await load_artifact(artifact_id)
+    a = await container.artifacts.load(artifact_id)
     if a is None:
         return {"error": f"artifact {artifact_id} not found"}
     if a["type"] != "code":
@@ -128,7 +127,7 @@ async def generate_primary_sources_appendix(backend: Backend = "typst") -> dict[
     Paste the returned `snippet` at the end of the document (after the main
     bibliography is fine). Empty `snippet` means no included artifacts.
     """
-    items = await _list_artifacts_all(included_only=True)
+    items = await container.artifacts.list(included_only=True)
     snippet = primary_sources_appendix(items, backend)
     return {"backend": backend, "snippet": snippet, "entries": len(items)}
 

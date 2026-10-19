@@ -4,8 +4,10 @@ import json
 from typing import Any
 
 from snowcite.domain import rules
+from snowcite.services.artifacts import brief
 from snowcite.services.search import SearchService
 from snowcite.storage.repositories import (
+    ArtifactRepository,
     NoteRepository,
     PaperRepository,
     ProjectRepository,
@@ -23,6 +25,7 @@ class SectionService:
         reviews: ReviewRepository,
         project: ProjectRepository,
         search: SearchService,
+        artifacts: ArtifactRepository,
     ) -> None:
         self._sections = sections
         self._notes = notes
@@ -30,6 +33,7 @@ class SectionService:
         self._reviews = reviews
         self._project = project
         self._search = search
+        self._artifacts = artifacts
 
     # ─── Structure ──────────────────────────────────────────────────────
 
@@ -127,6 +131,7 @@ class SectionService:
             }
             | {"critique_iterations": section["critique_iterations"]},
             "notes": await self._notes.in_clusters(clusters),
+            "artifacts": [brief(a) for a in await self._artifacts.list(included_only=True)],
             "linked_papers": [{k: v for k, v in p.items() if k != "discovered_at"} for p in linked],
         }
 
