@@ -7,11 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.4.0] — 2026-10-19
 
+### Added
+
+- **`next_step()`** — one entry point that derives the phase from the database (`not_started`, `criteria`, `search`, `review`, `low_confidence`, `synthesis`, `outline`, `writing`, `build`, `done`) and returns the ordered actions plus the data for that phase (criteria and the next compact batch while reviewing, the current section and its next action while writing). Gates are enforced in code: the next review batch is withheld until the rolling summary is saved, unconfirmed `auto_low` decisions block the outline, and a section without notes for its scope can't be drafted.
+- `ProjectService`/`ClaudeFiles` own project init and the generated Claude Code files.
+
 ### Changed
 
 - **Layered package layout.** `domain/` (pure models, types, rules), `storage/` (`Database`, schema, repositories), `services/` (Review, Note, Section, Synthesis, Search, Citation, Artifact, Build), `render/` (`DocumentBackend` with `TypstBackend`/`LatexBackend`, `Compiler`, bibliography, templates), `sources/` (`SourceClient` + one class per source), wired in `container.py`. MCP tools are thin wrappers over services; workflow invariants live in `domain/rules.py`.
 - `write_document` takes `title`/`author` first and builds from stored section drafts when `sections` is omitted.
-- Session phases: `outline_proposed` / `outline_approved` / `skeleton_approved` replaced by `outlined`; phases derive from `sections`.
+- `get_session_state` is replaced by `next_step`; phases derive from the database and the old `outline_*` / `skeleton_approved` / `polishing` phases are gone.
 
 ### Fixed
 

@@ -60,10 +60,12 @@ chat — summarize in one or two neutral sentences.
 
 ## Onboarding check
 
-**First action in every new session:** call `get_session_state()`. It returns a
-compact snapshot — current `phase`, `next_action` hint, counts, last review
-actions — so you can pick up exactly where a prior session left off without
-re-querying a dozen tools.
+**First action in every new session, and after every batch:** call `next_step()`.
+It returns the current `phase`, the ordered `do` actions, and a `payload` with the
+data that phase needs (criteria and the next batch in `review`, the section in
+`writing`, ...), plus counts, targets and warnings. Follow `do`; the server
+withholds the next review batch until the summary is saved and blocks the outline
+until `auto_low` decisions are confirmed.
 
 If it reports `project_active: False`, collect metadata (author, language,
 discipline, standard, backend, optionally supervisor/institution/deadline) via

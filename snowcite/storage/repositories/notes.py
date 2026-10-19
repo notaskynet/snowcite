@@ -217,3 +217,13 @@ class NoteRepository:
         for r in rows:
             by_cluster.setdefault(r["cluster"], {}).setdefault(r["type"], []).append(r["id"])
         return by_cluster, anchored
+
+    async def scope_counts(self) -> tuple[int, int]:
+        """`(per_paper_notes, cross_paper_notes)` across the whole project."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                "SELECT COALESCE(SUM(paper_id IS NOT NULL), 0), "
+                "COALESCE(SUM(paper_id IS NULL), 0) FROM notes"
+            )
+            per, cross = await cur.fetchone()
+        return per, cross

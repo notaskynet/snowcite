@@ -88,7 +88,7 @@ permanently by requesting an API key and setting
 ## The Claude session lost context
 
 Normal after `/clear` or a new session. Fix: the first tool Claude should call
-is `get_session_state()`. It returns current phase, next-action hint, last
+is `next_step()`. It returns current phase, next-action hint, last
 review actions, section counts. Claude picks up exactly where it left off.
 
 ## PDF output missing Russian characters

@@ -1,7 +1,7 @@
 # Workflow
 
 snowcite is five phases. Each phase persists state to the project DB, so
-`/clear` or a new session doesn't lose work — `get_session_state()` returns a
+`/clear` or a new session doesn't lose work — `next_step()` returns a
 snapshot telling Claude where it left off.
 
 ```mermaid
@@ -108,6 +108,6 @@ Finally `compile_pdf(doc_path)`. Backend is inferred from the extension:
 
 ## Session recovery
 
-After `/clear` or in a new session, Claude calls `get_session_state()` first.
+After `/clear` or in a new session, Claude calls `next_step()` first.
 It returns the current phase (`reviewing` / `writing` / etc.) and a `next_action`
 hint, so Claude can resume without re-probing the DB.
