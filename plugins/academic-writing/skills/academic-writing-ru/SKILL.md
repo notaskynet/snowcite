@@ -1,57 +1,57 @@
 ---
 name: academic-writing-ru
-description: Писать научный текст по-русски - без кальки с английского, с короткими предложениями, устоявшейся терминологией и аккуратными ссылками. Использовать, когда пишется или правится обзор литературы, глава ВКР, статья, реферат или любой научный текст на русском, а также когда текст звучит как машинный перевод.
+description: Write scientific prose in Russian that reads as native Russian, not as translation from English - short sentences, established terminology, careful claims and citations. Use when writing or editing a literature review, thesis chapter, article, abstract or any academic text in Russian, or when text sounds like machine translation.
 ---
 
-# Научный русский
+# Scientific Russian
 
-Пиши по-русски нативно, а не переводи с английского слово в слово. Читатель — научный
-руководитель или комиссия: им нужны ясность и проверяемость, не красота.
+Write Russian natively; don't translate English word by word. The reader is a supervisor or a
+committee: they need clarity and verifiability, not ornament. Examples below are Russian on
+purpose; the instructions are in English.
 
-## Предложения
+## Sentences
 
-- Короткие предложения. Одна мысль — одно предложение, редко два придаточных.
-- Меньше причастных и деепричастных оборотов подряд. Три причастия в цепочке — повод разбить.
-- Не копируй английский синтаксис: цепочки существительных в родительном падеже
-  («оценка эффективности защиты от атак на модели»), пассив там, где естественен актив,
-  инверсия «было показано, что…» вместо «авторы показали, что…».
-- Активный залог, когда есть субъект: «Авторы сравнивают три метода», не «Сравнение трёх
-  методов проводится авторами».
-- Вводные штампы вычёркивай: «следует отметить, что», «стоит подчеркнуть», «в рамках данного
-  исследования», «таким образом, можно сделать вывод» — если за ними нет содержания.
+- Short sentences: one thought each, rarely two subordinate clauses.
+- Avoid chains of participial and adverbial participial phrases (причастные и деепричастные
+  обороты). Three in a row means split the sentence.
+- Don't mirror English syntax: stacks of genitive nouns ("оценка эффективности защиты от атак
+  на модели"), passive where active is natural, "было показано, что…" instead of
+  "авторы показали, что…".
+- Prefer the active voice when there is a subject: "Авторы сравнивают три метода", not
+  "Сравнение трёх методов проводится авторами".
+- Cut filler openers unless something follows: "следует отметить, что", "стоит
+  подчеркнуть", "в рамках данного исследования", "таким образом, можно сделать вывод".
 
-## Терминология
+## Terminology
 
-- Устоявшиеся англоязычные термины оставляй как есть, курсивом при первом упоминании
-  (*alignment*, *prompt injection*, *jailbreak*, *fine-tuning*, *red teaming*, *RLHF*,
-  *embeddings*, *guardrails*, *effect size*, *confounder*). Не калькируй их в корявые
-  русские эквиваленты («выравнивание безопасности» вместо *safety alignment*).
-- Названия методов и систем не переводи: GCG, SmoothLLM, PAIR, HarmBench, AutoDAN, LLaMA.
-- Один термин — одно написание во всём тексте. Принял решение по термину — применяй
-  последовательно до конца документа.
-- **Сомневаешься в термине — спроси пользователя**, а не выбирай молча.
+- Keep established English terms as they are, in *italics* on first mention: *alignment*,
+  *prompt injection*, *jailbreak*, *fine-tuning*, *red teaming*, *RLHF*, *embeddings*,
+  *guardrails*, *effect size*, *confounder*. Don't calque them into awkward Russian
+  ("выравнивание безопасности" for *safety alignment*).
+- Never translate method or system names: GCG, SmoothLLM, PAIR, HarmBench, AutoDAN, LLaMA.
+- One term, one spelling across the whole text. Once you decide on a term, apply it
+  consistently to the end of the document.
+- **If unsure about a term, ask the user** rather than choosing silently.
 
-## Ссылки и утверждения
+## Claims and citations
 
-- Каждое фактическое утверждение опирается на источник. Нет источника — смягчи формулировку
-  или убери утверждение.
-- Глаголы соответствуют силе источника: «показывает», «подтверждает» — для сильных
-  результатов; «указывает на», «предполагает» — для слабых. Не «доказывает» там, где
-  авторы лишь наблюдают корреляцию.
-- Не приписывай статье то, чего нет в её аннотации или заметках. Прямую цитату бери дословно
-  и только из источника, который держишь перед глазами.
-- Обзор — это не пересказ по статьям. Группируй по идеям: что известно, где авторы
-  согласны, где спорят, чего не хватает. Каждый абзац — одна мысль и вывод.
+- Every factual claim rests on a source. No source: soften the wording or remove the claim.
+- The verb matches the source's strength: "показывает", "подтверждает" for strong results;
+  "указывает на", "предполагает" for weak ones. Not "доказывает" where the authors only
+  observe a correlation.
+- Never attribute to a paper what its abstract or your notes don't contain. Take a direct
+  quotation verbatim, and only from a source you have in front of you.
+- A review is not a paper-by-paper retelling. Group by ideas: what is known, where authors
+  agree, where they disagree, what is missing. One thought and one takeaway per paragraph.
 
-## Структура абзаца обзора
+## Paragraph shape in a review
 
-1. Тезис абзаца одним предложением.
-2. Два-четыре источника, которые его поддерживают или оспаривают (со ссылками).
-3. Вывод или переход: что это значит для вопроса работы.
+1. A one-sentence thesis for the paragraph.
+2. Two to four sources that support or contest it, cited.
+3. A conclusion or bridge: what it means for the question of the work.
 
-## Перед сдачей
+## Before handing over
 
-Прочитай вслух (мысленно). Если фраза звучит как перевод — перепиши с нуля, исходя из
-смысла, а не из исходной формулировки. Для проверки на «машинный» стиль подойдёт отдельный
-проход редактора (например, навык humanizer), но только после того, как содержание
-стабильно.
+Read it back (mentally). If a phrase sounds like a translation, rewrite it from the meaning,
+not from the original wording. A separate editing pass for machine-sounding style (for
+example a humanizer skill) belongs after the content is stable, not before.

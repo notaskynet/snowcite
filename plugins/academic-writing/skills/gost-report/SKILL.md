@@ -1,124 +1,124 @@
 ---
 name: gost-report
-description: Составить план и оформить отчёт о НИР, курсовую, ВКР или реферат по ГОСТ 7.32-2017 - структурные элементы, поля и шрифт, заголовки и нумерация, рисунки, таблицы, формулы, ссылки, список источников, приложения, проверка перед нормоконтролем. Использовать, когда пользователь пишет работу «по ГОСТу», просит план работы, проверить оформление или подготовиться к нормоконтролю.
+description: Plan and format a research report, coursework, thesis (VKR) or essay under the Russian standard GOST 7.32-2017 - structural elements, margins and font, headings and numbering, figures, tables, formulas, citations, reference list, appendices, and a pre-submission check. Use when the user is writing a work "per GOST", asks for a plan of the work, a formatting check, or preparation for the style check (normokontrol).
 ---
 
-# Отчёт по ГОСТ 7.32-2017
+# Reports under GOST 7.32-2017
 
-ГОСТ 7.32-2017 — стандарт на **отчёт о научно-исследовательской работе**. Курсовые и ВКР
-обычно оформляют по методичке вуза, которая на него опирается и кое-что меняет. Поэтому
-сначала выясни, чьи правила действуют, потом применяй.
+GOST 7.32-2017 is the standard for a **research report (otchet o NIR)**. Coursework and
+theses usually follow the university's own guidelines (the "metodichka"), which build on it
+and change some points. So find out whose rules apply first, then apply them.
 
-Навык описывает структуру и оформление, а не формат файла: подходит для Word, Typst, LaTeX
-и чего угодно ещё. Текст пиши по навыку `academic-writing-ru`.
+This skill covers structure and formatting, not the file format: it works for Word, Typst,
+LaTeX or anything else. Write the prose with the `academic-writing-ru` skill. Keep Russian
+element names (РЕФЕРАТ, ВВЕДЕНИЕ, ...) exactly as the document needs them.
 
-## 1. Сначала спроси
+## 1. Ask first
 
-1. Есть ли методичка вуза или кафедры? Если да — попроси её (или список отличий от ГОСТ).
-   **Методичка главнее ГОСТа** везде, где они расходятся.
-2. Что за работа: отчёт о НИР, курсовая, ВКР, реферат? От этого зависит состав структуры.
-3. В каком порядке нумеровать источники: по первому упоминанию или по алфавиту?
-4. Какой формат файла и чем будет собираться документ.
+1. Is there a university or department guideline? If so, ask for it (or for its differences
+   from the GOST). **The guideline overrides the GOST** wherever they disagree.
+2. What kind of work: research report, coursework, thesis, essay? It decides which
+   structural elements are needed.
+3. Reference numbering: by first mention in the text, or alphabetical?
+4. Output format, and what will assemble the document.
 
-Значения ниже — ГОСТ 7.32-2017 и то, что чаще всего требуют вузы. Всё, где ответ даёт
-методичка, помечено **(методичка)**.
+Values below are GOST 7.32-2017 plus what universities most often require. Points where the
+guideline usually decides are marked **(guideline)**.
 
-## 2. Структура работы
+## 2. Structure
 
-Порядок фиксирован. **Жирным** — обязательные элементы.
+The order is fixed. **Bold** elements are mandatory.
 
-| # | Элемент | Что в нём |
+| # | Element | Contents |
 |---|---|---|
-| 1 | **Титульный лист** | по форме вуза или организации, не по вкусу |
-| 2 | Список исполнителей | только для коллективной работы |
-| 3 | **Реферат** | объём (страницы, рисунки, таблицы, источники, приложения); ключевые слова — 5–15, в именительном падеже, прописными, через запятую, в строку; текст: объект, цель, методы, результаты, выводы |
-| 4 | **Содержание** | все структурные элементы и разделы с номерами страниц, включая приложения |
-| 5 | Термины и определения; перечень сокращений | если их больше нескольких |
-| 6 | **Введение** | актуальность, цель и задачи, объект и предмет, методы **(методичка:** положения на защиту, новизна, значимость**)** |
-| 7 | **Основная часть** | разделы и подразделы; обзор литературы группируй по идеям, а не по статьям |
-| 8 | **Заключение** | выводы по задачам, ответ на вопросы введения; новых данных нет |
-| 9 | **Список использованных источников** | см. раздел 5 |
-| 10 | Приложения | см. раздел 6 |
+| 1 | **Title page** | the university's or organisation's form, not free design |
+| 2 | List of performers | collective work only |
+| 3 | **Abstract (реферат)** | volume (pages, figures, tables, references, appendices); 5–15 keywords in the nominative case, uppercase, comma-separated on one line; text: object, aim, methods, results, conclusions |
+| 4 | **Table of contents** | every structural element and section with page numbers, appendices included |
+| 5 | Terms and definitions; list of abbreviations | if there are more than a few |
+| 6 | **Introduction** | relevance, aim and tasks, object and subject, methods **(guideline:** defended statements, novelty, significance**)** |
+| 7 | **Main body** | sections and subsections; in a literature review group by ideas, not by paper |
+| 8 | **Conclusion** | findings per task, answers to the introduction's questions; no new data |
+| 9 | **List of references** | see section 5 |
+| 10 | Appendices | see section 6 |
 
-Для курсовой и реферата часть элементов (список исполнителей, термины) обычно не нужна, а
-реферат заменяется аннотацией **(методичка)**.
+Coursework and essays usually drop the list of performers and the terms list, and replace
+the abstract with an annotation **(guideline)**.
 
-## 3. Оформление страницы и текста
+## 3. Page and text
 
-| Параметр | Значение |
+| Parameter | Value |
 |---|---|
-| Формат | A4, односторонняя печать |
-| Поля | левое 30 мм, правое 10 мм, верхнее и нижнее 20 мм **(методичка:** правое часто 15 мм**)** |
-| Шрифт | Times New Roman, чёрный, обычное начертание; 14 пт **(методичка:** допускается 12–14**)** |
-| Интервал | полуторный |
-| Абзацный отступ | 1,25 см |
-| Выравнивание | по ширине, без переносов |
-| Номера страниц | арабские, внизу по центру, без точки, сквозные; титульный лист считается, но номер на нём не ставят |
+| Format | A4, single-sided |
+| Margins | left 30 mm, right 10 mm, top and bottom 20 mm **(guideline:** right is often 15 mm**)** |
+| Font | Times New Roman, black, regular; 14 pt **(guideline:** 12–14 allowed**)** |
+| Line spacing | 1.5 |
+| First-line indent | 1.25 cm |
+| Alignment | justified, no hyphenation |
+| Page numbers | Arabic, bottom centre, no full stop, continuous; the title page counts but shows no number |
 
-Каждый структурный элемент (реферат, содержание, введение, заключение, список источников,
-приложение) начинай с новой страницы. Разделы основной части **(методичка)** — тоже с новой.
+Start every structural element (abstract, contents, introduction, conclusion, references,
+each appendix) on a new page. Main-body sections too **(guideline)**.
 
-## 4. Заголовки, рисунки, таблицы, формулы
+## 4. Headings, figures, tables, formulas
 
-**Заголовки.**
-- Названия структурных элементов (РЕФЕРАТ, СОДЕРЖАНИЕ, ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ, СПИСОК
-  ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ) — прописными, по центру, без номера, без точки в конце.
-- Разделы и подразделы — арабскими цифрами, с абзацного отступа, без точки после номера и в
-  конце заголовка: `1 Название`, `1.1 Название`, `1.1.1 Название`.
-- Заголовок не переносится по слогам; после него — пропуск строки; заголовок не остаётся
-  одиноко внизу страницы.
+**Headings.**
+- Structural element names (РЕФЕРАТ, СОДЕРЖАНИЕ, ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ, СПИСОК ИСПОЛЬЗОВАННЫХ
+  ИСТОЧНИКОВ) are uppercase, centred, unnumbered, with no full stop.
+- Sections and subsections use Arabic numerals, first-line indent, no full stop after the
+  number or at the end: `1 Title`, `1.1 Title`, `1.1.1 Title`.
+- No hyphenation in a heading, a blank line after it, never a heading alone at the foot of
+  a page.
 
-**Рисунки.** Подпись под рисунком по центру: `Рисунок 1 – Название`. Нумерация сквозная
-**(методичка:** или по разделам, `Рисунок 1.1`**)**. В тексте: «(рисунок 1)»; ссылка
-стоит **раньше** самого рисунка.
+**Figures.** Caption below, centred: `Рисунок 1 – Title`. Numbering is continuous
+**(guideline:** or per section, `Рисунок 1.1`**)**. In the text: "(рисунок 1)", and the
+reference comes **before** the figure.
 
-**Таблицы.** Название над таблицей слева, без абзацного отступа: `Таблица 1 – Название`.
-При переносе: над продолжением «Продолжение таблицы 1», шапка повторяется. В тексте:
-«(таблица 1)».
+**Tables.** Title above, left-aligned, no indent: `Таблица 1 – Title`. A table that breaks
+across pages gets "Продолжение таблицы 1" above the continuation and repeats its header. In
+the text: "(таблица 1)".
 
-**Формулы.** С новой строки по центру, номер в круглых скобках у правого поля: `(1)`.
-Пояснения символов — после формулы, со слова «где», в порядке появления в формуле.
+**Formulas.** On their own line, centred, number in parentheses at the right margin: `(1)`.
+Explain symbols right after, introduced by "где", in order of appearance.
 
-**Перечисления.** Один знак по всей работе: дефис, либо строчная буква со скобкой `а)`; внутри
-второго уровня — арабская цифра со скобкой `1)`.
+**Lists.** One marker style throughout: a dash, or a lowercase letter with a parenthesis
+`а)`; second level an Arabic digit with a parenthesis `1)`.
 
-**Тире.** В подписях `Рисунок 1 – …` и `Таблица 1 – …` — тире (–) с пробелами, не дефис.
+**Dashes.** In captions use a spaced en dash (–), not a hyphen: `Рисунок 1 – …`.
 
-## 5. Ссылки и список источников
+## 5. Citations and the reference list
 
-- Ссылка в тексте — в квадратных скобках: `[1]`, `[1, с. 25]`, `[1–3]`.
-- Порядок: по первому упоминанию в тексте **(методичка:** многие вузы требуют алфавитный**)**.
-- Описание источника — по ГОСТ Р 7.0.100-2018; методички старого образца требуют ГОСТ 7.1-2003.
-  Минимум для статьи: авторы, название, журнал, год, том, номер, страницы, DOI. Для электронных
-  ресурсов — адрес и дата обращения.
-- Каждый источник из списка процитирован в тексте, и наоборот. Номера в тексте совпадают со
-  списком.
-- Если литература собрана в snowcite: `export_bibliography("bibtex")` возвращает записи и
-  соответствие `id статьи → ключ`; по нему `[N]` из черновиков заменяются на номера по выбранному
-  порядку, а записи оформляются в нужном стиле.
+- In-text citation in square brackets: `[1]`, `[1, с. 25]`, `[1–3]`.
+- Order: by first mention **(guideline:** many universities require alphabetical**)**.
+- Bibliographic description follows GOST R 7.0.100-2018; older guidelines still ask for
+  GOST 7.1-2003. Minimum for an article: authors, title, journal, year, volume, issue,
+  pages, DOI. Online sources: URL and access date.
+- Every listed source is cited in the text and vice versa; numbers in the text match the list.
+- With snowcite: `export_bibliography("bibtex")` returns the entries and a map
+  `paper id → key`. Use the map to turn the drafts' `[N]` into numbers in the chosen order,
+  and format the entries in the required style.
 
-## 6. Приложения
+## 6. Appendices
 
-Обозначаются заглавными буквами русского алфавита, начиная с А, **кроме Ё, З, Й, О, Ч, Ь, Ы,
-Ъ**: `ПРИЛОЖЕНИЕ А`, ниже — название. На каждое приложение есть ссылка в тексте. Рисунки,
-таблицы и формулы внутри приложения нумеруются с его буквой: `Рисунок А.1`, `Таблица Б.2`,
-`(В.1)`.
+Lettered with capital Russian letters starting with А, **skipping Ё, З, Й, О, Ч, Ь, Ы, Ъ**:
+`ПРИЛОЖЕНИЕ А`, title below. Every appendix is referenced in the text. Figures, tables and
+formulas inside an appendix carry its letter: `Рисунок А.1`, `Таблица Б.2`, `(В.1)`.
 
-## 7. Порядок работы
+## 7. Working order
 
-1. Выясни пункты из раздела 1.
-2. Составь план по таблице раздела 2 и согласуй его с пользователем **до** написания текста.
-3. Пиши разделы и критикуй их (snowcite: `sections` и `academic-critic`).
-4. Оформление делай в последнюю очередь, по разделам 3–6, не по ходу письма.
-5. Финальный проход — по списку ниже.
+1. Settle the questions in section 1.
+2. Draft the plan from the table in section 2 and agree it with the user **before** writing.
+3. Write and critique sections (snowcite `sections` skill, `academic-critic`).
+4. Format last, by sections 3–6, not while drafting.
+5. Final pass with the checklist below.
 
-## 8. Проверка перед нормоконтролем
+## 8. Pre-submission checklist
 
-- [ ] Поля, шрифт, интервал, отступ одинаковы во всём тексте, включая таблицы и подписи.
-- [ ] Структурные элементы начинаются с новой страницы; заголовки без точек и переносов.
-- [ ] Нумерация разделов и содержание совпадают; в содержании есть приложения и страницы.
-- [ ] На каждый рисунок, таблицу и приложение есть ссылка в тексте, и она стоит раньше.
-- [ ] Подписи по форме: `Рисунок 1 – …` снизу, `Таблица 1 – …` сверху.
-- [ ] Список источников: все описания полные, порядок выбранный, номера совпадают со ссылками.
-- [ ] Приложения обозначены правильными буквами.
-- [ ] Реферат: счётчики (страницы, рисунки, таблицы, источники, приложения) верны.
+- [ ] Margins, font, spacing and indent are identical throughout, tables and captions included.
+- [ ] Structural elements start on new pages; headings have no full stops or hyphenation.
+- [ ] Section numbering matches the contents, which lists appendices and page numbers.
+- [ ] Every figure, table and appendix is referenced in the text, and the reference comes first.
+- [ ] Captions follow the form: `Рисунок 1 – …` below, `Таблица 1 – …` above.
+- [ ] References: complete descriptions, chosen order, numbers match the citations.
+- [ ] Appendices use the permitted letters.
+- [ ] Abstract counters (pages, figures, tables, references, appendices) are correct.
