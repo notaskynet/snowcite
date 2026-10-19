@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "snowcite": {
+      "command": "uvx",
+      "args": ["snowcite"],
+      "env": {
+        "SNOWCITE_SEMANTIC_SCHOLAR_API_KEY": "${user_config.semantic_scholar_api_key}",
+        "SNOWCITE_OPENALEX_EMAIL": "${user_config.openalex_email}"
+      }
+    }
+  }
+}

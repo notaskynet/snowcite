@@ -1,84 +1,52 @@
 # Installation
 
-snowcite ships as a Python package and runs as an MCP server inside Claude Code. You need:
+snowcite is a Python package that runs as an MCP server, plus two Claude Code plugins that carry the skills. You need:
 
 - [uv](https://docs.astral.sh/uv/) (ships `uvx`) — runs the server on demand.
 - [Claude Code](https://claude.com/claude-code) — the client.
-- At least one compile backend — [Typst](https://typst.app/) (recommended) or [tectonic](https://tectonic-typesetting.github.io/) (LaTeX).
 
-## Register with Claude Code
+## As plugins (recommended)
+
+```bash
+claude plugin marketplace add cop1cat/snowcite
+claude plugin install snowcite@snowcite-plugins           # server + review skills
+claude plugin install academic-writing@snowcite-plugins   # optional: RU style, critic, GOST
+```
+
+The `snowcite` plugin starts the server with `uvx snowcite` and asks for two optional settings: a Semantic Scholar API key and a contact email for OpenAlex / Crossref. The `academic-writing` plugin is independent — install it with or without snowcite.
+
+## Server only
 
 ```bash
 claude mcp add snowcite -- uvx snowcite
-```
 
-With optional API keys (higher rate limits, faster searches):
-
-```bash
+# with optional keys (higher rate limits)
 claude mcp add snowcite \
   -e SNOWCITE_SEMANTIC_SCHOLAR_API_KEY=xxx \
   -e SNOWCITE_OPENALEX_EMAIL=you@example.com \
   -- uvx snowcite
 ```
 
-## Install a compile backend
+Without the plugin you have the tools but not the skills; ask Claude to call `next_step()` and it will tell you what to do.
 
-Typst is recommended — native Unicode, single static binary, fast incremental compilation.
+## Verify
 
-=== "macOS"
-
-    ```bash
-    brew install typst
-    # Optional LaTeX fallback
-    brew install tectonic
-    # For .docx export
-    brew install pandoc
-    ```
-
-=== "Linux"
-
-    ```bash
-    # Typst: grab the static binary from https://github.com/typst/typst/releases
-    curl -L https://github.com/typst/typst/releases/latest/download/typst-x86_64-unknown-linux-musl.tar.xz | tar -xJ
-    sudo mv typst-*/typst /usr/local/bin/
-
-    # tectonic is in most package managers
-    sudo apt install tectonic
-    ```
-
-=== "Windows"
-
-    ```powershell
-    winget install --id Typst.Typst
-    winget install --id tectonic.tectonic
-    ```
-
-## Verify the environment
-
-After connecting the server in Claude Code, run:
-
-```
-Can you check_environment?
-```
-
-Claude calls the `check_environment` MCP tool; the report lists which binaries
-and API endpoints are reachable. Anything flagged `error` is a blocker; `warn`
-entries degrade a specific feature (e.g., missing pandoc → no `.docx` export).
+Ask Claude: "run `check_environment`". The report lists which source APIs and keys are reachable. `error` entries are blockers; `warn` entries degrade one feature (a source down, a key missing).
 
 ## API keys
 
-### Semantic Scholar
+| Source | Without a key | With a key |
+|---|---|---|
+| Semantic Scholar (`SNOWCITE_SEMANTIC_SCHOLAR_API_KEY`) | 100 requests / 5 min | 100 requests / s — [request one](https://www.semanticscholar.org/product/api) |
+| OpenAlex (`SNOWCITE_OPENALEX_EMAIL`) | common pool | polite pool with a stable limit |
+| Crossref | reuses the OpenAlex email | — |
+| arXiv, PubMed | no key | — |
 
-Unauthenticated: 100 req / 5 min. With an API key ([request one](https://www.semanticscholar.org/product/api)), 100 req / sec. Pass via `SNOWCITE_SEMANTIC_SCHOLAR_API_KEY`.
+## Development
 
-### OpenAlex
-
-OpenAlex's polite pool gives stable rate limits in exchange for an email in the `mailto=` query param. Pass via `SNOWCITE_OPENALEX_EMAIL`.
-
-### Crossref
-
-Uses the same email as OpenAlex. No separate key.
-
-### PubMed
-
-No key required; NCBI asks for ≤3 requests per second, which the built-in semaphore enforces.
+```bash
+git clone https://github.com/cop1cat/snowcite.git && cd snowcite
+uv sync --group dev
+uv run pytest && uv run ruff check
+claude plugin validate .     # marketplace + both plugins
+```

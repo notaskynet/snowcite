@@ -1,22 +1,23 @@
 # snowcite
 
-MCP server for systematic literature review. Search arXiv / Semantic Scholar / OpenAlex / Crossref / PubMed, snowball through citations, review papers through chat, generate Typst or LaTeX documents, compile to PDF.
+MCP server and skills for systematic literature review. Search arXiv / Semantic Scholar / OpenAlex / Crossref / PubMed, snowball through citations, screen papers through chat, keep a notes graph and synthesise across papers. The text itself is written by the model, guided by skills — snowcite builds no PDF.
 
 !!! info "No UI, no browser"
-    Review happens in chat. Claude reads abstracts in batches, pre-filters autonomously, surfaces borderline cases to you. Architectural choice — see [Workflow](workflow.md).
+    Review happens in chat. Claude reads compact records in batches, pre-filters autonomously and brings only borderline cases to you.
 
 ## What makes it different
 
-- **Draft-first writing** — outline → skeleton → section-by-section expand with drift checks. No 2500-word walls of text dropped on you to review.
-- **Two independent review subagents** — academic-reviewer critiques claims and citations, humanizer cleans language. They run with fresh context, like external reviewers.
-- **Projects live in directories** — `.snowcite/` alongside your source files, like `.git`. `cd` to switch projects. `git clone` to share.
-- **Typst first** — Cyrillic works out of the box, no font or biber dance. LaTeX available for strict ГОСТ / existing vuz templates.
-- **Multi-discipline** — automatic source routing: STEM gets arXiv, medicine gets PubMed, everyone gets OpenAlex / Semantic Scholar / Crossref.
+- **Rails in the server, procedure in skills.** `next_step()` derives the phase from the database and returns what to do and the data to do it with. Gates are enforced in code: the next batch waits for the rolling summary, unconfirmed low-confidence calls block synthesis, approved papers must leave a note in the graph.
+- **A knowledge graph, not a reading list.** Every approved paper leaves `claim` / `finding` notes; synthesis adds traceable gaps, contradictions and consensus on top.
+- **Sections with a critique loop.** Draft from notes, critique as a strict reviewer, revise — stops at zero blockers or two iterations.
+- **Standalone writing skills.** Russian scientific style, a reviewer rubric and GOST 7.32 report structure work with or without snowcite.
+- **Projects live in directories.** `.snowcite/` next to your files, like `.git`. `cd` to switch projects.
+- **Multi-discipline source routing.** STEM gets arXiv, medicine gets PubMed, everyone gets OpenAlex, Semantic Scholar and Crossref.
 
 ## Next
 
 - [Installation](installation.md)
 - [Getting started](getting-started.md) — your first review
-- [Workflow](workflow.md) — detailed loop
-- [Backends](backends.md) — Typst vs LaTeX
-- [Troubleshooting](troubleshooting.md) — Cyrillic, safety refusals, tectonic quirks
+- [Workflow](workflow.md) — the phases in detail
+- [Artifacts](artifacts.md) — interviews, code and notes as sources
+- [Troubleshooting](troubleshooting.md)
