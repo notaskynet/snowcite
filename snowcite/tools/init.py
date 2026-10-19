@@ -1,10 +1,7 @@
-"""Project initialization — creates `.snowcite/`, persists metadata, writes CLAUDE.md.
+"""Project initialization — creates `.snowcite/` and persists project metadata.
 
-Claude drives the onboarding dialog through AskUserQuestion (MCP tools can't initiate
-user-facing prompts). It collects metadata, then calls `init_project(metadata=...)`
-which persists it, re-renders CLAUDE.md from `templates/claude_md.j2`, and hands
-back a diff for `.claude/settings.json` that Claude can apply after asking the user
-how to resolve it.
+Claude collects the metadata with the user (AskUserQuestion — MCP tools can't prompt
+users themselves), then calls `init_project(metadata=...)`.
 """
 
 from typing import Any
@@ -18,42 +15,26 @@ async def init_project(
     metadata: dict[str, Any] | None = None,
     update: bool = False,
     migrate_from_legacy: bool = True,
-    update_agents: bool = False,
 ) -> dict[str, Any]:
     """Initialize (or update) the snowcite project in the current working directory.
 
-    Creates `.snowcite/` (with `papers.db`, `cache/`), persists metadata into the
-    `project_metadata` singleton, and regenerates `CLAUDE.md` from the bundled
-    Jinja template.
+    Creates `.snowcite/` (with `papers.db`, `cache/`) and persists `metadata` into the
+    `project_metadata` singleton: author, supervisor, institution, department, year,
+    work_type, target_length, language, discipline, standard, methodology,
+    review_strictness, deadline and the targets target_pages, target_sources_min/max,
+    target_words, citation_density_target. Unknown keys are kept under `extra`.
 
-    For `.claude/settings.json`, we don't silently overwrite — `settings_diff` in
-    the return value lists what's missing. Claude should ask the user via
-    `AskUserQuestion` whether to merge / overwrite (backup in .bak) / skip, then
-    apply the chosen action itself.
-
-    `update=True` keeps existing `review_criteria`, `sections`, `papers` etc. —
-    it only touches metadata + CLAUDE.md + settings diff. Use this when the user
-    tweaks their project profile mid-work.
+    `update=True` merges `metadata` into what is stored and keeps criteria, papers,
+    notes and sections — use it when the project profile changes mid-work. Without
+    `metadata` the call just returns what is stored.
     """
-    return await container.project_service.init(
-        metadata, update, migrate_from_legacy, update_agents
-    )
+    return await container.project_service.init(metadata, update, migrate_from_legacy)
 
 
 @mcp.tool()
 async def get_project_metadata() -> dict[str, Any]:
-    """Return the current project_metadata row (empty dict if never set)."""
-    return await container.project_service.metadata()
+    """Return the project profile (language, standard, discipline, targets, ...); {} if never set.
 
-
-@mcp.tool()
-async def apply_settings_diff(action: str) -> dict[str, Any]:
-    """Apply the user's decision for `.claude/settings.json`.
-
-    `action`:
-    - `"create"` — create the file fresh (when it didn't exist).
-    - `"merge"` — add missing snowcite entries to existing allow list.
-    - `"overwrite"` — back up existing file as `settings.json.bak`, then replace.
-    - `"skip"` — do nothing. Claude relays the consequence to the user.
+    Writing skills read `language` and `standard` from here.
     """
-    return container.project_service.apply_settings_diff(action)
+    return await container.project_service.metadata()

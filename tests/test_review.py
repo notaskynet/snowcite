@@ -24,8 +24,6 @@ async def test_get_review_progress_computes_density_and_warnings(
 ):
     # Target: 3 sources minimum, density 2.0/100 words. Approve 1 paper →
     # expect a warning that sources are below the floor.
-    # init_project writes CLAUDE.md into cwd; chdir into the tmp project so
-    # the real repo isn't polluted.
     monkeypatch.chdir(tmp_project)
     await init_project(
         metadata={

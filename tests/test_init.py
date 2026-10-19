@@ -1,6 +1,5 @@
-"""T4: full init_project onboarding — metadata, CLAUDE.md, settings diff."""
+"""init_project onboarding — scaffold, metadata persistence, migrations."""
 
-import json
 from pathlib import Path
 
 import aiosqlite
@@ -8,7 +7,7 @@ import pytest
 
 from snowcite.container import container
 from snowcite.storage.projects import create_project_dir, get_db_path
-from snowcite.tools.init import apply_settings_diff, get_project_metadata, init_project
+from snowcite.tools.init import get_project_metadata, init_project
 
 
 @pytest.fixture
@@ -71,23 +70,14 @@ async def test_init_migrates_existing_db_without_target_columns(
 
 
 @pytest.mark.asyncio
-async def test_init_creates_claude_md_and_dirs(isolated_cwd: Path):
-    result = await init_project(
-        metadata={
-            "author": "Jane Doe",
-            "language": "ru",
-            "discipline": "cs",
-            "standard": "gost",
-        }
-    )
-    assert Path(result["claude_md_path"]).exists()
+async def test_init_scaffolds_dirs_and_writes_no_claude_files(isolated_cwd: Path):
+    result = await init_project(metadata={"author": "Jane Doe", "language": "ru"})
     assert (isolated_cwd / ".snowcite" / "papers.db").exists()
     assert (isolated_cwd / ".snowcite" / "cache").is_dir()
-
-    text = Path(result["claude_md_path"]).read_text()
-    assert "Jane Doe" in text
-    assert "Discipline" in text  # rendered section
-    assert "gost" in text
+    assert result["metadata_effective"]["author"] == "Jane Doe"
+    # Instructions ship as skills in the plugin, not as generated project files.
+    assert not (isolated_cwd / "CLAUDE.md").exists()
+    assert not (isolated_cwd / ".claude").exists()
 
 
 @pytest.mark.asyncio
@@ -128,79 +118,6 @@ async def test_init_without_metadata_keeps_existing(isolated_cwd: Path):
     await init_project()
     md = await get_project_metadata()
     assert md["author"] == "Alice"
-
-
-@pytest.mark.asyncio
-async def test_settings_diff_create_when_missing(isolated_cwd: Path):
-    result = await init_project(metadata={"author": "A"})
-    diff = result["settings_diff"]
-    assert diff["exists"] is False
-    assert diff["action_required"] == "create"
-    assert "mcp__snowcite__*" in diff["missing_entries"]
-
-
-@pytest.mark.asyncio
-async def test_settings_diff_ask_user_when_partial(isolated_cwd: Path):
-    # Pre-create settings.json with only one entry.
-    claude_dir = isolated_cwd / ".claude"
-    claude_dir.mkdir()
-    (claude_dir / "settings.json").write_text(
-        json.dumps({"permissions": {"allow": ["mcp__snowcite__*"]}})
-    )
-
-    result = await init_project(metadata={"author": "A"})
-    diff = result["settings_diff"]
-    assert diff["exists"] is True
-    assert diff["action_required"] == "ask_user"
-    # Snowcite's default allowlist is larger than what the user pre-seeded.
-    assert len(diff["missing_entries"]) > 0
-    assert "mcp__snowcite__*" in diff["existing_entries"]
-
-
-@pytest.mark.asyncio
-async def test_apply_settings_diff_merge(isolated_cwd: Path):
-    create_project_dir()
-    (isolated_cwd / ".claude").mkdir()
-    (isolated_cwd / ".claude" / "settings.json").write_text(
-        json.dumps({"permissions": {"allow": ["WebSearch"]}}, indent=2)
-    )
-
-    r = await apply_settings_diff("merge")
-    assert r["applied"] is True
-    content = json.loads((isolated_cwd / ".claude" / "settings.json").read_text())
-    allow = content["permissions"]["allow"]
-    assert "WebSearch" in allow  # preserved
-    assert "mcp__snowcite__*" in allow  # added
-
-
-@pytest.mark.asyncio
-async def test_apply_settings_diff_overwrite_backs_up(isolated_cwd: Path):
-    create_project_dir()
-    (isolated_cwd / ".claude").mkdir()
-    orig = isolated_cwd / ".claude" / "settings.json"
-    orig.write_text("custom content, definitely not json but whatever")
-
-    r = await apply_settings_diff("overwrite")
-    assert r["applied"] is True
-    assert (isolated_cwd / ".claude" / "settings.json.bak").exists()
-    assert orig.exists()  # new one in place
-    content = json.loads(orig.read_text())
-    assert "mcp__snowcite__*" in content["permissions"]["allow"]
-
-
-@pytest.mark.asyncio
-async def test_apply_settings_diff_skip(isolated_cwd: Path):
-    create_project_dir()
-    r = await apply_settings_diff("skip")
-    assert r["applied"] is False
-
-
-@pytest.mark.asyncio
-async def test_claude_md_contains_language_and_standard(isolated_cwd: Path):
-    result = await init_project(metadata={"language": "fr", "standard": "apa"})
-    text = Path(result["claude_md_path"]).read_text()
-    assert "fr" in text
-    assert "apa" in text
 
 
 @pytest.mark.asyncio

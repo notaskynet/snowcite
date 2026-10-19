@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from snowcite.app import mcp
 from snowcite.container import container
-from snowcite.domain.bibliography import build_bibtex_document
+from snowcite.domain.bibliography import build_bibtex_document, build_cite_key_map
 from snowcite.domain.models import ApprovedPaper
 from snowcite.storage.projects import require_project_root
 
@@ -42,9 +42,9 @@ async def export_bibliography(
 ) -> dict[str, Any]:
     """Write the approved set as `references.bib` (BibTeX) or `references.ris` (RIS).
 
-    BibTeX reuses a paper's own bibtex when present and publishes the same cite keys
-    the rest of snowcite derives. RIS is for Mendeley / EndNote / Zotero import.
-    Default location is the project root.
+    BibTeX reuses a paper's own bibtex when present. `keys` maps snowcite paper ids
+    (the `[N]` in drafts) to the BibTeX cite keys. RIS is for Mendeley / EndNote /
+    Zotero import. Default location is the project root.
     """
     papers = await container.papers.load_approved()
     if format == "bibtex":
@@ -55,4 +55,11 @@ async def export_bibliography(
         default_name = "references.ris"
     path = Path(output_path) if output_path else _default_output_path(default_name)
     path.write_text(body, encoding="utf-8")
-    return {"path": str(path), "format": format, "entries": len(papers)}
+    return {
+        "path": str(path),
+        "format": format,
+        # snowcite ids -> BibTeX keys, so `[N]` citations in drafts can be rewritten
+        # to \cite{key} / @key in whatever format the document is written in.
+        "keys": {str(pid): key for pid, key in build_cite_key_map(list(papers)).items()},
+        "entries": len(papers),
+    }
