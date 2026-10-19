@@ -6,9 +6,11 @@ from pydantic import ValidationError
 
 from snowcite.domain.dedup import normalize_doi
 from snowcite.domain.models import Paper
+from snowcite.domain.types import Direction
 from snowcite.logging import log
 from snowcite.settings import settings
 from snowcite.sources._http import http_get
+from snowcite.sources.base import CitationSource
 
 
 BASE_URL = "https://api.semanticscholar.org/graph/v1"
@@ -57,76 +59,79 @@ def _to_paper(item: dict[str, Any]) -> Paper | None:
         return None
 
 
-async def search(
-    query: str,
-    limit: int = 20,
-    year_from: int | None = None,
-    year_to: int | None = None,
-) -> list[Paper]:
-    params: dict[str, str | int] = {
-        "query": query,
-        "limit": min(limit, 100),
-        "fields": FIELDS,
-    }
-    if year_from or year_to:
-        params["year"] = f"{year_from or ''}-{year_to or ''}"
-    resp = await http_get(
-        "semantic_scholar",
-        f"{BASE_URL}/paper/search",
-        params=params,
-        headers=_headers(),
-    )
-    resp.raise_for_status()
-    items = (resp.json().get("data")) or []
-    out: list[Paper] = []
-    for i in items:
-        if not (i.get("paperId") and i.get("title")):
-            continue
-        p = _to_paper(i)
-        if p is not None:
-            out.append(p)
-    return out
+class SemanticScholarSource(CitationSource):
+    name = "semantic_scholar"
 
+    async def search(
+        self,
+        query: str,
+        limit: int = 20,
+        year_from: int | None = None,
+        year_to: int | None = None,
+    ) -> list[Paper]:
+        params: dict[str, str | int] = {
+            "query": query,
+            "limit": min(limit, 100),
+            "fields": FIELDS,
+        }
+        if year_from or year_to:
+            params["year"] = f"{year_from or ''}-{year_to or ''}"
+        resp = await http_get(
+            "semantic_scholar",
+            f"{BASE_URL}/paper/search",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        items = (resp.json().get("data")) or []
+        out: list[Paper] = []
+        for i in items:
+            if not (i.get("paperId") and i.get("title")):
+                continue
+            p = _to_paper(i)
+            if p is not None:
+                out.append(p)
+        return out
 
-async def get_related(
-    paper_id: str,
-    direction: str,
-    limit: int = 20,
-) -> list[Paper]:
-    """Fetch references or citations for a Semantic Scholar paper ID."""
-    params: dict[str, str | int] = {
-        "fields": RELATED_FIELDS,
-        "limit": min(limit, 1000),
-    }
-    resp = await http_get(
-        "semantic_scholar",
-        f"{BASE_URL}/paper/{paper_id}/{direction}",
-        params=params,
-        headers=_headers(),
-    )
-    resp.raise_for_status()
-    items = (resp.json().get("data")) or []
-    out: list[Paper] = []
-    for item in items:
-        paper_data = item.get("citedPaper" if direction == "references" else "citingPaper")
-        if not (paper_data and paper_data.get("paperId") and paper_data.get("title")):
-            continue
-        p = _to_paper(paper_data)
-        if p is not None:
-            out.append(p)
-    return out[:limit]
+    async def get_related(
+        self,
+        paper_id: str,
+        direction: Direction,
+        limit: int = 20,
+    ) -> list[Paper]:
+        """Fetch references or citations for a Semantic Scholar paper ID."""
+        params: dict[str, str | int] = {
+            "fields": RELATED_FIELDS,
+            "limit": min(limit, 1000),
+        }
+        resp = await http_get(
+            "semantic_scholar",
+            f"{BASE_URL}/paper/{paper_id}/{direction}",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        items = (resp.json().get("data")) or []
+        out: list[Paper] = []
+        for item in items:
+            paper_data = item.get("citedPaper" if direction == "references" else "citingPaper")
+            if not (paper_data and paper_data.get("paperId") and paper_data.get("title")):
+                continue
+            p = _to_paper(paper_data)
+            if p is not None:
+                out.append(p)
+        return out[:limit]
 
-
-async def resolve_by_doi(doi: str) -> str | None:
-    """Resolve a DOI to a Semantic Scholar paper ID."""
-    resp = await http_get(
-        "semantic_scholar",
-        f"{BASE_URL}/paper/DOI:{doi}",
-        params={"fields": "paperId"},
-        headers=_headers(),
-        timeout=15.0,
-    )
-    if resp.status_code == HTTP_NOT_FOUND:
-        return None
-    resp.raise_for_status()
-    return resp.json().get("paperId")
+    async def resolve_by_doi(self, doi: str) -> str | None:
+        """Resolve a DOI to a Semantic Scholar paper ID."""
+        resp = await http_get(
+            "semantic_scholar",
+            f"{BASE_URL}/paper/DOI:{doi}",
+            params={"fields": "paperId"},
+            headers=_headers(),
+            timeout=15.0,
+        )
+        if resp.status_code == HTTP_NOT_FOUND:
+            return None
+        resp.raise_for_status()
+        return resp.json().get("paperId")

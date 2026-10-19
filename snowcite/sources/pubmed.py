@@ -15,6 +15,7 @@ from snowcite.domain.dedup import normalize_doi
 from snowcite.domain.models import Paper
 from snowcite.logging import log
 from snowcite.sources._http import http_get
+from snowcite.sources.base import SourceClient
 
 
 BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -56,50 +57,54 @@ def _to_paper(pmid: str, summary: dict[str, Any]) -> Paper | None:
         return None
 
 
-async def search(
-    query: str,
-    limit: int = 20,
-    year_from: int | None = None,
-    year_to: int | None = None,
-) -> list[Paper]:
-    """Two-step: esearch → esummary.
+class PubMedSource(SourceClient):
+    name = "pubmed"
 
-    Abstracts require a third call (efetch with rettype=abstract) and come back as
-    XML rather than JSON. That's a larger dependency and a separate pass; we skip
-    it here and let the abstract stay None. For borderline papers the user can
-    augment via a manual enrichment step later.
-    """
-    # Step 1 — esearch returns PMIDs matching the query.
-    esearch_params: dict[str, str | int] = {
-        "db": "pubmed",
-        "term": query,
-        "retmode": "json",
-        "retmax": min(limit, 100),
-    }
-    # PubMed date filter via `mindate`/`maxdate` + `datetype=pdat` (publication).
-    if year_from or year_to:
-        esearch_params["mindate"] = str(year_from) if year_from else "1800"
-        esearch_params["maxdate"] = str(year_to) if year_to else "3000"
-        esearch_params["datetype"] = "pdat"
+    async def search(
+        self,
+        query: str,
+        limit: int = 20,
+        year_from: int | None = None,
+        year_to: int | None = None,
+    ) -> list[Paper]:
+        """Two-step: esearch → esummary.
 
-    resp = await http_get("pubmed", f"{BASE_URL}/esearch.fcgi", params=esearch_params)
-    resp.raise_for_status()
-    pmids = ((resp.json().get("esearchresult") or {}).get("idlist")) or []
-    if not pmids:
-        return []
+        Abstracts require a third call (efetch with rettype=abstract) and come back as
+        XML rather than JSON. That's a larger dependency and a separate pass; we skip
+        it here and let the abstract stay None. For borderline papers the user can
+        augment via a manual enrichment step later.
+        """
+        # Step 1 — esearch returns PMIDs matching the query.
+        esearch_params: dict[str, str | int] = {
+            "db": "pubmed",
+            "term": query,
+            "retmode": "json",
+            "retmax": min(limit, 100),
+        }
+        # PubMed date filter via `mindate`/`maxdate` + `datetype=pdat` (publication).
+        if year_from or year_to:
+            esearch_params["mindate"] = str(year_from) if year_from else "1800"
+            esearch_params["maxdate"] = str(year_to) if year_to else "3000"
+            esearch_params["datetype"] = "pdat"
 
-    # Step 2 — esummary returns structured metadata for all PMIDs in one call.
-    esum_params = {"db": "pubmed", "id": ",".join(pmids), "retmode": "json"}
-    resp = await http_get("pubmed", f"{BASE_URL}/esummary.fcgi", params=esum_params)
-    resp.raise_for_status()
-    result = (resp.json().get("result")) or {}
+        resp = await http_get("pubmed", f"{BASE_URL}/esearch.fcgi", params=esearch_params)
+        resp.raise_for_status()
+        pmids = ((resp.json().get("esearchresult") or {}).get("idlist")) or []
+        if not pmids:
+            return []
 
-    out: list[Paper] = []
-    for pmid in pmids:
-        summary = result.get(pmid)
-        if not summary:
-            continue
-        p = _to_paper(pmid, summary)
-        if p is not None:
-            out.append(p)
-    return out
+        # Step 2 — esummary returns structured metadata for all PMIDs in one call.
+        esum_params = {"db": "pubmed", "id": ",".join(pmids), "retmode": "json"}
+        resp = await http_get("pubmed", f"{BASE_URL}/esummary.fcgi", params=esum_params)
+        resp.raise_for_status()
+        result = (resp.json().get("result")) or {}
+
+        out: list[Paper] = []
+        for pmid in pmids:
+            summary = result.get(pmid)
+            if not summary:
+                continue
+            p = _to_paper(pmid, summary)
+            if p is not None:
+                out.append(p)
+        return out

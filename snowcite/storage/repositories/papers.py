@@ -8,6 +8,7 @@ import aiosqlite
 from snowcite.domain.dedup import find_title_match, normalize_title
 from snowcite.domain.models import ApprovedPaper, Paper, PersistResult
 from snowcite.storage.database import Database
+from snowcite.storage.rows import paper_row_to_dict
 
 
 class PaperRepository:
@@ -141,3 +142,77 @@ class PaperRepository:
         async with self._db.connection() as conn:
             cur = await conn.execute("SELECT 1 FROM papers WHERE id = ?", (paper_id,))
             return await cur.fetchone() is not None
+
+    async def find(
+        self,
+        status: str | None,
+        source: str | None,
+        year_from: int | None,
+        year_to: int | None,
+        search: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[dict[str, Any]]:
+        """Saved papers joined with review status, AND-filtered."""
+        query = """
+            SELECT p.*, r.status AS review_status, r.reason AS review_reason,
+                   r.note AS review_note, r.reviewed_by, r.reviewed_at
+            FROM papers p
+            LEFT JOIN reviews r ON r.paper_id = p.id
+            WHERE 1=1
+        """
+        params: list[Any] = []
+        if status is not None:
+            query += " AND r.status = ?"
+            params.append(status)
+        if source is not None:
+            query += " AND p.source = ?"
+            params.append(source)
+        if year_from is not None:
+            query += " AND p.year >= ?"
+            params.append(year_from)
+        if year_to is not None:
+            query += " AND p.year <= ?"
+            params.append(year_to)
+        if search:
+            query += " AND (p.title LIKE ? OR p.abstract LIKE ?)"
+            params.extend([f"%{search}%"] * 2)
+        query += " ORDER BY p.id LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        async with self._db.connection() as conn:
+            cur = await conn.execute(query, params)
+            return [paper_row_to_dict(r) for r in await cur.fetchall()]
+
+    async def details(self, paper_id: int) -> dict[str, Any] | None:
+        """Full record with review status and stored citation-edge counts."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                """
+                SELECT p.*, r.status AS review_status, r.reason AS review_reason,
+                       r.note AS review_note, r.reviewed_by, r.reviewed_at
+                FROM papers p
+                LEFT JOIN reviews r ON r.paper_id = p.id
+                WHERE p.id = ?
+                """,
+                (paper_id,),
+            )
+            row = await cur.fetchone()
+            if row is None:
+                return None
+            paper = paper_row_to_dict(row)
+            for direction in ("references", "citations"):
+                cur = await conn.execute(
+                    "SELECT COUNT(*) FROM citations WHERE source_paper_id = ? AND direction = ?",
+                    (paper_id, direction),
+                )
+                paper[f"{direction}_count"] = (await cur.fetchone())[0]
+        return paper
+
+    async def source_ref(self, paper_id: int) -> dict[str, Any] | None:
+        """`{source, source_id, doi}` for a paper — enough to look it up elsewhere."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                "SELECT source, source_id, doi FROM papers WHERE id = ?", (paper_id,)
+            )
+            row = await cur.fetchone()
+        return dict(row) if row else None

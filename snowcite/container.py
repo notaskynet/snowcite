@@ -5,9 +5,15 @@ from snowcite.services import (
     BuildService,
     NoteService,
     ReviewService,
+    SearchService,
     SectionService,
     SynthesisService,
 )
+from snowcite.sources.arxiv_client import ArxivSource
+from snowcite.sources.crossref import CrossrefSource
+from snowcite.sources.openalex import OpenAlexSource
+from snowcite.sources.pubmed import PubMedSource
+from snowcite.sources.semantic_scholar import SemanticScholarSource
 from snowcite.storage.database import Database
 from snowcite.storage.repositories import (
     NoteRepository,
@@ -30,8 +36,21 @@ class Container:
 
         self.review_service = ReviewService(self.reviews, self.sections, self.project)
         self.note_service = NoteService(self.notes)
+        semantic_scholar = SemanticScholarSource()
+        self.search = SearchService(
+            self.papers,
+            self.project,
+            {
+                "arxiv": ArxivSource(),
+                "semantic_scholar": semantic_scholar,
+                "openalex": OpenAlexSource(),
+                "crossref": CrossrefSource(),
+                "pubmed": PubMedSource(),
+            },
+            citations=semantic_scholar,
+        )
         self.section_service = SectionService(
-            self.sections, self.notes, self.papers, self.reviews, self.project
+            self.sections, self.notes, self.papers, self.reviews, self.project, self.search
         )
         self.synthesis = SynthesisService(self.notes, self.reviews)
         self.build = BuildService(self.papers, self.sections, self.project, Compiler())

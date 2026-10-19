@@ -50,7 +50,7 @@ async def test_research_section_runs_per_query_and_links(
     async def fake_search(**kwargs: Any) -> dict[str, Any]:
         return next(responses)
 
-    monkeypatch.setattr("snowcite.tools.research.search_papers", fake_search)
+    monkeypatch.setattr(container.search, "search", fake_search)
 
     res = await research_section(section_id=sec["id"])
     assert res["total_new"] == 3
@@ -85,7 +85,7 @@ async def test_research_section_propagates_failed_sources(
     async def fake_search(**kwargs: Any) -> dict[str, Any]:
         return {"saved": 0, "duplicates": 0, "new_ids": [], "failed_sources": ["arxiv"]}
 
-    monkeypatch.setattr("snowcite.tools.research.search_papers", fake_search)
+    monkeypatch.setattr(container.search, "search", fake_search)
     res = await research_section(section_id=sec["id"])
     assert res["failed_sources"] == ["arxiv"]
 
