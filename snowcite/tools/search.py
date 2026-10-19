@@ -13,7 +13,7 @@ from snowcite.domain.types import Direction, Source, Status
 from snowcite.logging import log
 from snowcite.sources import arxiv_client, crossref, openalex, pubmed, semantic_scholar
 from snowcite.storage.projects import NoProjectError
-from snowcite.tools.common import paper_row_to_dict
+from snowcite.storage.rows import paper_row_to_dict
 
 
 def _truncate_abstract(abstract: str | None, max_chars: int) -> str | None:

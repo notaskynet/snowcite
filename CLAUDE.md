@@ -163,8 +163,9 @@ snowcite/
 ├── server.py              # MCP entrypoint (installed as `snowcite` console script)
 ├── app.py                 # FastMCP instance shared by all tool modules
 ├── settings.py            # pydantic-settings, env SNOWCITE_*
-├── container.py           # builds Database + repositories (the one wiring point)
-├── domain/                # pure: models (Paper, ...), types (Literals), dedup
+├── container.py           # builds Database, repositories and services (the one wiring point)
+├── domain/                # pure: models, types (Literals), dedup, citations, rules (invariants)
+├── services/              # ReviewService, NoteService: validation + orchestration
 ├── storage/               # Database, schema + migrations, projects.py (.snowcite/ resolver),
 │   └── repositories/      #   PaperRepository, ReviewRepository, SectionRepository
 ├── rendering.py           # backend-aware PRISMA / overview renderers

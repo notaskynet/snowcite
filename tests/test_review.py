@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 
 from snowcite.container import container
+from snowcite.domain.citations import count_cites
 from snowcite.domain.models import Paper
 from snowcite.tools.init import init_project
 from snowcite.tools.review import (
-    _count_cites,
     get_review_progress,
     get_unreviewed_papers,
     set_review_status,
@@ -18,9 +18,9 @@ from snowcite.tools.writing import save_section
 
 def test_count_cites_bracketed_numeric_refs():
     # `[1, 2; 3]` counts as three cites; `[note]` is ignored.
-    assert _count_cites("see [1] and [note]") == 1
-    assert _count_cites("shown in [1, 2; 3]") == 3
-    assert _count_cites("no cites here") == 0
+    assert count_cites("see [1] and [note]") == 1
+    assert count_cites("shown in [1, 2; 3]") == 3
+    assert count_cites("no cites here") == 0
 
 
 @pytest.mark.asyncio
