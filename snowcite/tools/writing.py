@@ -534,7 +534,8 @@ async def regenerate_section_brief(name: str, feedback: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def get_section(name: str) -> dict[str, Any] | None:
+async def get_section_content(name: str) -> dict[str, Any] | None:
+    """One v0.2 section body by name (see `get_section` for v0.3 sections by id)."""
     async with get_connection() as conn:
         cur = await conn.execute(
             "SELECT name, content, word_count, version, polished, updated_at "
@@ -548,8 +549,8 @@ async def get_section(name: str) -> dict[str, Any] | None:
 
 
 @mcp.tool()
-async def list_sections() -> list[dict[str, Any]]:
-    """All persisted sections with metadata (no content bodies). For session restore."""
+async def list_section_contents() -> list[dict[str, Any]]:
+    """All persisted v0.2 section bodies with metadata (no content bodies). For session restore."""
     async with get_connection() as conn:
         cur = await conn.execute(
             "SELECT name, word_count, version, polished, updated_at "

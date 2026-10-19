@@ -15,10 +15,10 @@ from snowcite.tools.writing import (
     generate_overview_table,
     generate_prisma_flow,
     get_outline,
-    get_section,
+    get_section_content,
     get_skeleton,
     get_thesis,
-    list_sections,
+    list_section_contents,
     polish_document,
     polish_section,
     rewrite_citations,
@@ -116,7 +116,7 @@ async def test_section_save_and_version_bump(tmp_project: Path):
     r2 = await save_section("intro", "totally different")
     assert r2["version"] == 2
 
-    got = await get_section("intro")
+    got = await get_section_content("intro")
     assert got["content"] == "totally different"
     assert got["version"] == 2
 
@@ -125,7 +125,7 @@ async def test_section_save_and_version_bump(tmp_project: Path):
 async def test_list_sections_shows_metadata_only(tmp_project: Path):
     await save_section("intro", "a b c")
     await save_section("methods", "one two three four")
-    rows = await list_sections()
+    rows = await list_section_contents()
     assert {r["name"] for r in rows} == {"intro", "methods"}
     # No content body in the listing.
     assert all("content" not in r for r in rows)
@@ -185,7 +185,7 @@ async def test_polish_section_sets_polished_flag(tmp_project: Path):
     await save_section("intro", "draft text")
     r = await polish_section("intro", "polished text, nicer")
     assert r["polished"] is True
-    got = await get_section("intro")
+    got = await get_section_content("intro")
     assert got["polished"] == 1
     assert got["content"] == "polished text, nicer"
 
@@ -298,7 +298,7 @@ async def test_rewrite_citations_remaps_bracketed_refs(tmp_project: Path):
     assert len(r["modified"]) == 1
     assert r["modified"][0]["name"] == "intro"
 
-    stored = await get_section("intro")
+    stored = await get_section_content("intro")
     assert "[11]" in stored["content"]
     assert "[2, 13]" in stored["content"]
     assert "[4]" in stored["content"]
@@ -315,7 +315,7 @@ async def test_rewrite_citations_skips_sections_without_target_ids(tmp_project: 
     assert r["refs_replaced"] == 1
     assert [m["name"] for m in r["modified"]] == ["a"]
     # Section b untouched — version stays at 1.
-    assert (await get_section("b"))["version"] == 1
+    assert (await get_section_content("b"))["version"] == 1
 
 
 @pytest.mark.asyncio
