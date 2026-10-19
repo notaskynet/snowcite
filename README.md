@@ -77,7 +77,7 @@ flowchart TD
 ## Install
 
 ```bash
-claude plugin marketplace add cop1cat/snowcite
+claude plugin marketplace add notaskynet/snowcite
 claude plugin install snowcite@snowcite-plugins           # MCP server + review / synthesis / section skills
 claude plugin install academic-writing@snowcite-plugins   # optional: Russian style, critic, GOST 7.32
 ```
@@ -128,7 +128,7 @@ confirmed low-confidence calls); the skills carry the procedure.
 
 ## Docs
 
-Full documentation: [cop1cat.github.io/snowcite](https://cop1cat.github.io/snowcite/). Coverage:
+Full documentation: [notaskynet.github.io/snowcite](https://notaskynet.github.io/snowcite/). Coverage:
 
 - Installation on macOS / Linux / Windows
 - Workflow in depth (review loop, snowball, synthesis, section critique)
@@ -138,7 +138,7 @@ Full documentation: [cop1cat.github.io/snowcite](https://cop1cat.github.io/snowc
 ## Development
 
 ```bash
-git clone https://github.com/cop1cat/snowcite.git
+git clone https://github.com/notaskynet/snowcite.git
 cd snowcite
 uv sync --group dev
 uv run pytest

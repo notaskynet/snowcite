@@ -3,9 +3,9 @@
   "displayName": "Academic writing",
   "version": "0.4.0",
   "description": "Skills for academic writing: Russian scientific style, a strict reviewer rubric, GOST 7.32 report structure.",
-  "author": { "name": "cop1cat" },
-  "homepage": "https://cop1cat.github.io/snowcite/",
-  "repository": "https://github.com/cop1cat/snowcite",
+  "author": { "name": "notaskynet" },
+  "homepage": "https://notaskynet.github.io/snowcite/",
+  "repository": "https://github.com/notaskynet/snowcite",
   "license": "MIT",
   "keywords": ["academic-writing", "gost", "russian", "thesis"]
 }

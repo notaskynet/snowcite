@@ -1,8 +1,8 @@
 site_name: snowcite
 site_description: MCP server for systematic literature review
-site_url: https://cop1cat.github.io/snowcite/
-repo_url: https://github.com/cop1cat/snowcite
-repo_name: cop1cat/snowcite
+site_url: https://notaskynet.github.io/snowcite/
+repo_url: https://github.com/notaskynet/snowcite
+repo_name: notaskynet/snowcite
 
 theme:
   name: material

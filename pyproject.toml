@@ -27,9 +27,9 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/cop1cat/snowcite"
-Documentation = "https://cop1cat.github.io/snowcite/"
-Issues = "https://github.com/cop1cat/snowcite/issues"
+Repository = "https://github.com/notaskynet/snowcite"
+Documentation = "https://notaskynet.github.io/snowcite/"
+Issues = "https://github.com/notaskynet/snowcite/issues"
 
 [project.scripts]
 snowcite = "snowcite.server:main"

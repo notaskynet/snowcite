@@ -8,7 +8,7 @@ snowcite is a Python package that runs as an MCP server, plus two Claude Code pl
 ## As plugins (recommended)
 
 ```bash
-claude plugin marketplace add cop1cat/snowcite
+claude plugin marketplace add notaskynet/snowcite
 claude plugin install snowcite@snowcite-plugins           # server + review skills
 claude plugin install academic-writing@snowcite-plugins   # optional: RU style, critic, GOST
 ```
@@ -45,7 +45,7 @@ Ask Claude: "run `check_environment`". The report lists which source APIs and ke
 ## Development
 
 ```bash
-git clone https://github.com/cop1cat/snowcite.git && cd snowcite
+git clone https://github.com/notaskynet/snowcite.git && cd snowcite
 uv sync --group dev
 uv run pytest && uv run ruff check
 claude plugin validate .     # marketplace + both plugins

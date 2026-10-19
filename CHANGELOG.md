@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Plugins and skills.** `.claude-plugin/marketplace.json` (`snowcite-plugins`) lists two plugins: `snowcite` (the MCP server via `uvx snowcite`, optional Semantic Scholar key and OpenAlex email as plugin settings, skills `workflow`, `search`, `review`, `synthesis`, `sections`) and `academic-writing` (skills `academic-writing-ru`, `academic-critic`, `gost-report`, agent `academic-reviewer`; works without snowcite). Install with `claude plugin marketplace add cop1cat/snowcite`.
+- **Plugins and skills.** `.claude-plugin/marketplace.json` (`snowcite-plugins`) lists two plugins: `snowcite` (the MCP server via `uvx snowcite`, optional Semantic Scholar key and OpenAlex email as plugin settings, skills `workflow`, `search`, `review`, `synthesis`, `sections`) and `academic-writing` (skills `academic-writing-ru`, `academic-critic`, `gost-report`, agent `academic-reviewer`; works without snowcite). Install with `claude plugin marketplace add notaskynet/snowcite`.
 - `export_bibliography` returns `keys`: snowcite paper id → BibTeX cite key.
 - **`next_step()`** — one entry point that derives the phase from the database (`not_started`, `criteria`, `search`, `review`, `low_confidence`, `synthesis`, `outline`, `writing`, `build`, `done`) and returns the ordered actions plus the data for that phase (criteria and the next compact batch while reviewing, the current section and its next action while writing). Gates are enforced in code: the next review batch is withheld until the rolling summary is saved, unconfirmed `auto_low` decisions block the outline, and a section without notes for its scope can't be drafted.
 - `get_prisma_counts` — PRISMA numbers from the review trail.
@@ -112,5 +112,5 @@ First public release of `snowcite` — an MCP server for systematic literature r
 - PDFs are not parsed — abstracts come from source APIs.
 - Only `tectonic` and `typst` are supported; no system TeX Live.
 
-[0.2.0]: https://github.com/cop1cat/snowball-mcp/releases/tag/v0.2.0
-[0.1.0]: https://github.com/cop1cat/snowball-mcp/releases/tag/v0.1.0
+[0.2.0]: https://github.com/notaskynet/snowball-mcp/releases/tag/v0.2.0
+[0.1.0]: https://github.com/notaskynet/snowball-mcp/releases/tag/v0.1.0

@@ -1,6 +1,6 @@
 {
   "name": "snowcite-plugins",
-  "owner": { "name": "cop1cat" },
+  "owner": { "name": "notaskynet" },
   "description": "Systematic literature review for Claude: search, snowball, review and synthesis tools plus the skills that drive them, and standalone academic-writing skills.",
   "plugins": [
     {
