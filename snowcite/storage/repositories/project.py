@@ -1,5 +1,6 @@
 """Project-level settings stored in the `project_metadata` singleton."""
 
+import json
 from typing import Any
 
 import aiosqlite
@@ -94,3 +95,64 @@ class ProjectRepository:
             cur = await conn.execute("SELECT content, updated_at FROM thesis WHERE id = 1")
             row = await cur.fetchone()
         return dict(row) if row else None
+
+    # ─── Project metadata (author, standard, backend, targets, ...) ─────
+
+    # Columns of the `project_metadata` singleton that callers may set. Keeping
+    # them in one place keeps the INSERT, the template variables and the
+    # return value in sync; unknown keys land in `extra_json` untouched.
+    METADATA_FIELDS = (
+        "author",
+        "supervisor",
+        "institution",
+        "department",
+        "year",
+        "work_type",
+        "target_length",
+        "language",
+        "discipline",
+        "standard",
+        "methodology",
+        "backend",
+        "review_strictness",
+        "deadline",
+        "target_pages",
+        "target_sources_min",
+        "target_sources_max",
+        "target_words",
+        "citation_density_target",
+    )
+
+    async def load_metadata(self) -> dict[str, Any]:
+        """The metadata row without bookkeeping columns or nulls; {} if never saved."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute("SELECT * FROM project_metadata WHERE id = 1")
+            row = await cur.fetchone()
+        if row is None:
+            return {}
+        data = {k: row[k] for k in row.keys() if k not in ("id", "created_at", "updated_at")}
+        if data.get("extra_json"):
+            data["extra"] = json.loads(data.pop("extra_json"))
+        else:
+            data.pop("extra_json", None)
+        return {k: v for k, v in data.items() if v is not None}
+
+    async def save_metadata(self, metadata: dict[str, Any]) -> None:
+        """Upsert the singleton; keys outside `METADATA_FIELDS` are kept in extra_json."""
+        known = {k: metadata.get(k) for k in self.METADATA_FIELDS if k in metadata}
+        extra = {k: v for k, v in metadata.items() if k not in self.METADATA_FIELDS}
+        extra_json = json.dumps(extra) if extra else "{}"
+
+        cols = ["id", *known.keys(), "extra_json", "updated_at"]
+        placeholders = ["1", *["?"] * len(known), "?", "CURRENT_TIMESTAMP"]
+        updates = [f"{k} = excluded.{k}" for k in (*known.keys(), "extra_json")]
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        # Column names come from the static METADATA_FIELDS tuple, never from user input.
+        sql = (
+            f"INSERT INTO project_metadata ({', '.join(cols)}) "  # noqa: S608
+            f"VALUES ({', '.join(placeholders)}) "
+            f"ON CONFLICT(id) DO UPDATE SET {', '.join(updates)}"
+        )
+        async with self._db.connection() as conn:
+            await conn.execute(sql, (*known.values(), extra_json))
+            await conn.commit()
