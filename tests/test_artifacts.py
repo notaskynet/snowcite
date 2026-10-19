@@ -12,8 +12,6 @@ from snowcite.artifacts import (
     save_artifact,
     set_included,
 )
-from snowcite.container import container
-from snowcite.domain.models import Paper
 from snowcite.render.snippets import (
     include_code,
     primary_sources_appendix,
@@ -26,14 +24,9 @@ from snowcite.tools.artifacts import (
     list_artifacts,
     set_artifact_included,
 )
-from snowcite.tools.review_quality import prepare_section_for_review
 from snowcite.tools.writing import (
-    approve_outline,
     generate_primary_sources_appendix,
     include_code_artifact,
-    regenerate_section_brief,
-    save_outline,
-    save_section,
 )
 
 
@@ -146,50 +139,6 @@ async def test_delete_artifact(tmp_project: Path):
     out = await delete_artifact(r["id"])
     assert out["deleted"] is True
     assert await get_artifact(r["id"]) is None
-
-
-# ─── Writing-pipeline integration ───────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_prepare_section_for_review_includes_artifacts(tmp_project: Path):
-    # One paper, two artifacts (one excluded), one section tying them together.
-    await container.papers.persist([Paper(source="arxiv", source_id="1", title="T", abstract="x")])
-    aid_active = await save_artifact(type="interview", label="P01", content="Q: ...")
-    aid_excluded = await save_artifact(type="interview", label="P02", content="Q: ...")
-    await set_included(aid_excluded, False)
-
-    await save_outline(
-        [
-            {
-                "name": "findings",
-                "target_words": 300,
-                "paper_ids": [1],
-                "artifact_ids": [aid_active, aid_excluded],
-            }
-        ]
-    )
-    await approve_outline()
-    await save_section("findings", "Draft text referencing [I:1].")
-
-    r = await prepare_section_for_review("findings")
-    assert len(r["assigned_artifacts"]) == 1, "excluded artifact must be filtered out"
-    assert r["assigned_artifacts"][0]["id"] == aid_active
-    assert r["assigned_artifacts"][0]["content"] == "Q: ..."
-
-
-@pytest.mark.asyncio
-async def test_regenerate_section_brief_bundles_artifacts(tmp_project: Path):
-    aid = await save_artifact(type="code", label="auth.py", content="def login():\n    ...")
-    await save_outline(
-        [{"name": "methods", "target_words": 200, "paper_ids": [], "artifact_ids": [aid]}]
-    )
-    await approve_outline()
-    await save_section("methods", "Current draft.")
-
-    r = await regenerate_section_brief("methods", feedback="add a code excerpt")
-    assert len(r["assigned_artifacts"]) == 1
-    assert "citation_label" in r["instructions"]
 
 
 # ─── Rendering helpers ──────────────────────────────────────────────────────

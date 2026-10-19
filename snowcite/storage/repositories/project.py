@@ -39,7 +39,6 @@ class ProjectRepository:
         """
         async with self._db.connection() as conn:
             if wipe_sections:
-                await conn.execute("DELETE FROM section_content")
                 await conn.execute(
                     "UPDATE sections SET draft = '', status = 'outline', blockers = 0, "
                     "should_fix = 0, nits = 0, critique_iterations = 0 WHERE draft != ''"
@@ -75,3 +74,23 @@ class ProjectRepository:
         except (NoProjectError, aiosqlite.Error, OSError):
             return None
         return row["discipline"] if row else None
+
+    async def save_thesis(self, content: str) -> None:
+        async with self._db.connection() as conn:
+            await conn.execute(
+                """
+                INSERT INTO thesis (id, content, updated_at)
+                VALUES (1, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    content = excluded.content,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (content,),
+            )
+            await conn.commit()
+
+    async def thesis_record(self) -> dict[str, Any] | None:
+        async with self._db.connection() as conn:
+            cur = await conn.execute("SELECT content, updated_at FROM thesis WHERE id = 1")
+            row = await cur.fetchone()
+        return dict(row) if row else None

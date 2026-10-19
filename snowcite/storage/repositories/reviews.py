@@ -313,6 +313,58 @@ class ReviewRepository:
             "updated_at": row["updated_at"],
         }
 
+    async def prisma_counts(self) -> dict[str, Any]:
+        """Aggregate review_history into the PRISMA buckets.
+
+        identified = papers ever recorded; screened = papers whose current status
+        is anything but unreviewed; excluded = rejected, grouped by reason.
+        """
+        async with self._db.connection() as conn:
+            cur = await conn.execute("SELECT COUNT(DISTINCT paper_id) FROM review_history")
+            identified = (await cur.fetchone())[0]
+            cur = await conn.execute(
+                "SELECT COUNT(*) FROM reviews WHERE status IN ('approved','rejected','maybe')"
+            )
+            screened = (await cur.fetchone())[0]
+            cur = await conn.execute("SELECT COUNT(*) FROM reviews WHERE status = 'approved'")
+            included = (await cur.fetchone())[0]
+            cur = await conn.execute(
+                """
+                SELECT COALESCE(reason, '(no reason)') AS reason, COUNT(*) AS n
+                FROM reviews WHERE status = 'rejected'
+                GROUP BY reason ORDER BY n DESC
+                """
+            )
+            excluded = [{"reason": r["reason"], "count": r["n"]} for r in await cur.fetchall()]
+        return {
+            "identified": identified,
+            "screened": screened,
+            "excluded_total": sum(e["count"] for e in excluded),
+            "excluded_by_reason": excluded,
+            "included": included,
+        }
+
+    async def recent_history(self, limit: int) -> list[dict[str, Any]]:
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                """
+                SELECT paper_id, old_status, new_status, reason, reviewed_by, changed_at
+                FROM review_history ORDER BY id DESC LIMIT ?
+                """,
+                (limit,),
+            )
+            return [
+                {
+                    "paper_id": r["paper_id"],
+                    "old_status": r["old_status"],
+                    "new_status": r["new_status"],
+                    "reason": r["reason"],
+                    "reviewed_by": r["reviewed_by"],
+                    "at": r["changed_at"],
+                }
+                for r in await cur.fetchall()
+            ]
+
     async def summary_topics(self) -> set[str] | None:
         """Cluster topics in the current summary; None when no summary exists."""
         async with self._db.connection() as conn:

@@ -9,7 +9,7 @@ from snowcite.storage.database import Database
 
 _COLUMNS = (
     "id, title, scope_json, draft, status, parent_id, position, "
-    "blockers, should_fix, nits, critique_iterations, created_at, updated_at"
+    "blockers, should_fix, nits, critique_iterations, target_words, created_at, updated_at"
 )
 
 
@@ -28,6 +28,7 @@ def _to_record(row: Any) -> dict[str, Any]:
             "nits": row["nits"],
         },
         "critique_iterations": row["critique_iterations"],
+        "target_words": row["target_words"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -202,42 +203,36 @@ class SectionRepository:
     # ─── Document view ──────────────────────────────────────────────────
 
     async def load_document_sections(self) -> list[DocumentSection]:
-        """Sections to render, in document order.
-
-        v0.3 `sections` rows with a non-empty draft win (parents before their
-        children, siblings by position). When there are none, falls back to the
-        v0.2 `section_content` rows ordered by the outline.
-        """
+        """Sections with a non-empty draft in document order (parents before children)."""
         async with self._db.connection() as conn:
             cur = await conn.execute(
                 "SELECT id, title, draft, parent_id, position FROM sections ORDER BY position, id"
             )
             rows = await cur.fetchall()
-            cur = await conn.execute("SELECT sections_json FROM outline WHERE id = 1")
-            outline_row = await cur.fetchone()
-            cur = await conn.execute("SELECT name, content FROM section_content")
-            legacy = await cur.fetchall()
+        return self._ordered_drafts(rows)
 
-        if any(r["draft"].strip() for r in rows):
-            return self._ordered_drafts(rows)
-
-        by_name = {r["name"]: r["content"] for r in legacy}
-        names: list[str] = []
-        if outline_row:
-            for entry in json.loads(outline_row["sections_json"]) or []:
-                name = entry.get("name") if isinstance(entry, dict) else entry
-                if name in by_name and name not in names:
-                    names.append(name)
-        names += sorted(n for n in by_name if n not in names)
-        return [{"title": n, "content": by_name[n]} for n in names]
+    async def drafts(self) -> list[dict[str, Any]]:
+        """`{id, title, draft}` for every section holding text, in document order."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                "SELECT id, title, draft FROM sections WHERE draft != '' "
+                "ORDER BY COALESCE(parent_id, 0), position, id"
+            )
+            return [dict(r) for r in await cur.fetchall()]
 
     async def count_drafts(self) -> int:
-        """Sections holding text, across the v0.3 and v0.2 stores."""
         async with self._db.connection() as conn:
-            cur = await conn.execute("SELECT COUNT(*) FROM section_content")
-            legacy = (await cur.fetchone())[0]
             cur = await conn.execute("SELECT COUNT(*) FROM sections WHERE draft != ''")
-            return legacy + (await cur.fetchone())[0]
+            return (await cur.fetchone())[0]
+
+    async def progress_counts(self) -> dict[str, int]:
+        """`{total, drafted, done}` section counts."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                "SELECT COUNT(*), SUM(draft != ''), SUM(status = 'done') FROM sections"
+            )
+            total, drafted, done = await cur.fetchone()
+        return {"total": total, "drafted": drafted or 0, "done": done or 0}
 
     @staticmethod
     def _ordered_drafts(rows: list[Any]) -> list[DocumentSection]:

@@ -13,7 +13,6 @@ from snowcite.tools.review import (
     get_unreviewed_papers,
     set_review_status,
 )
-from snowcite.tools.writing import save_section
 
 
 def test_count_cites_bracketed_numeric_refs():
@@ -43,7 +42,16 @@ async def test_get_review_progress_computes_density_and_warnings(
         [Paper(source="arxiv", source_id="a", title="A", authors=["X"], year=2024)]
     )
     await set_review_status([1], "approved", reason="t", reviewed_by="auto_high")
-    await save_section("intro", "A short section with one cite [1] and a few words.")
+    sec = await container.section_service.create("intro", None, None, None)
+    await container.section_service.update(
+        sec["id"],
+        None,
+        None,
+        "A short section with one cite [1] and a few words.",
+        None,
+        None,
+        None,
+    )
     r = await get_review_progress()
     assert r["counts"]["approved"] == 1
     assert r["writing"]["citations"] == 1

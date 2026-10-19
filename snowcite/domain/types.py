@@ -23,9 +23,7 @@ type Phase = Literal[
     "criteria_set",
     "reviewing",
     "snowballing",
-    "outline_proposed",
-    "outline_approved",
-    "skeleton_approved",
+    "outlined",
     "writing",
     "polishing",
     "done",
@@ -84,15 +82,6 @@ class PaperRecord(TypedDict, total=False):
     reason: str | None
 
 
-class OutlineSection(TypedDict, total=False):
-    """One entry inside the outline's sections_json array."""
-
-    name: str
-    target_words: int
-    paper_ids: list[int]
-    artifact_ids: list[int]
-
-
 class ArtifactRecord(TypedDict, total=False):
     """A user-supplied research artifact: interview, code, note, document, dataset."""
 
@@ -105,16 +94,3 @@ class ArtifactRecord(TypedDict, total=False):
     metadata: dict[str, Any]
     included: bool
     created_at: str
-
-
-class SkeletonSection(TypedDict):
-    """One entry inside the skeleton's sections_json array."""
-
-    name: str
-    draft: str
-
-
-class DriftWarning(TypedDict):
-    severity: Literal["warn", "high"]
-    kind: Literal["no_outline", "unknown_section", "word_count"]
-    detail: str

@@ -1,288 +1,22 @@
-"""Draft-first writing pipeline: outline → skeleton → expand per section → polish.
+"""Writing helpers: thesis, citation checks, and backend-native snippets.
 
-Each stage persists to its own table (`outline`, `skeleton`, `section_content`)
-so `/clear` and session restarts don't lose work. Claude drives the user-facing
-approval cycle (via AskUserQuestion); these tools only read/write and flag drift.
+Structure and drafts live in sections (`tools/sections.py`, `tools/critique.py`);
+this module holds the pieces around them.
 """
 
-import json
-import re
 from typing import Any
 
 from snowcite.app import mcp
-from snowcite.artifacts import (
-    list_artifacts as _list_artifacts_all,
-    load_artifact,
-    load_artifacts_by_ids,
-)
+from snowcite.artifacts import list_artifacts as _list_artifacts_all, load_artifact
 from snowcite.container import container
-from snowcite.domain.types import Backend, DriftWarning, OutlineSection
+from snowcite.domain.citations import GAP_CHECK_MIN_WORDS
+from snowcite.domain.types import Backend
 from snowcite.render.snippets import (
     include_code,
     overview_table,
     primary_sources_appendix,
     prisma_flow,
 )
-
-
-# ─── Helpers ────────────────────────────────────────────────────────────────
-
-
-_SINGLETON_TABLES = ("outline", "skeleton")
-
-# Bracketed numeric-cite regex — shared by gap_check and rewrite_citations.
-# Matches `[N]`, `[N, M]`, `[N; M]`. Intentionally duplicated with the copy in
-# `bibliography.rewrite_cite_refs`: keeps tools independent of render path.
-_CITE_REF_RE = re.compile(r"\[(\d+(?:\s*[,;]\s*\d+)*)\]")
-
-# Sentence splitter for gap_check — splits on `.`/`?`/`!` followed by whitespace
-# or newline. Good enough for the rough "which sentences have no cite" signal;
-# not a linguistic tokenizer, doesn't understand abbreviations (e.g. "etc.").
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
-
-# Short sentences (connectives, transitions, section headers rendered inline)
-# rarely need a citation. Below this length we skip them entirely so the gap
-# report focuses on substantive claims.
-_GAP_CHECK_MIN_WORDS = 8
-
-
-def _word_count(text: str) -> int:
-    return len(text.split())
-
-
-async def _load_singleton(table: str) -> dict[str, Any] | None:
-    """Read outline or skeleton (singleton tables) and parse sections_json."""
-    if table not in _SINGLETON_TABLES:
-        raise ValueError(f"unknown singleton table: {table!r}")
-    # Static branch avoids an f-string SQL (lint-friendly) and keeps the lookup
-    # transparent — there are only two singleton tables.
-    async with container.db.connection() as conn:
-        if table == "outline":
-            cur = await conn.execute(
-                "SELECT id, sections_json, approved, created_at, updated_at "
-                "FROM outline WHERE id = 1"
-            )
-        else:
-            cur = await conn.execute(
-                "SELECT id, sections_json, approved, created_at, updated_at "
-                "FROM skeleton WHERE id = 1"
-            )
-        row = await cur.fetchone()
-    if row is None:
-        return None
-    data = {k: row[k] for k in row.keys()}
-    data["sections"] = json.loads(data.pop("sections_json"))
-    return data
-
-
-# ─── Outline ────────────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-async def save_outline(sections: list[dict[str, Any]]) -> dict[str, Any]:
-    """Persist the proposed outline (unapproved) for the document.
-
-    Each section is `{"name", "target_words", "paper_ids": [...]}`. Overwrites
-    any prior outline in this project; that's intentional — the user iterates
-    by re-proposing, not by editing.
-    """
-    async with container.db.connection() as conn:
-        await conn.execute(
-            """
-            INSERT INTO outline (id, sections_json, approved, updated_at)
-            VALUES (1, ?, 0, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET
-                sections_json = excluded.sections_json,
-                approved = 0,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (json.dumps(sections),),
-        )
-        await conn.commit()
-    return {"saved": True, "sections": len(sections), "approved": False}
-
-
-@mcp.tool()
-async def get_outline() -> dict[str, Any] | None:
-    """Return the current outline, or None if none proposed yet."""
-    return await _load_singleton("outline")
-
-
-@mcp.tool()
-async def approve_outline() -> dict[str, Any]:
-    """Mark the current outline as approved by the user. Required before write_skeleton."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute("SELECT 1 FROM outline WHERE id = 1")
-        if await cur.fetchone() is None:
-            return {"approved": False, "error": "no outline to approve — run save_outline first"}
-        await conn.execute(
-            "UPDATE outline SET approved = 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
-        )
-        await conn.commit()
-    return {"approved": True}
-
-
-# ─── Skeleton ───────────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-async def save_skeleton(sections: list[dict[str, Any]]) -> dict[str, Any]:
-    """Persist the 3-5-sentence-per-section skeleton draft.
-
-    Each section is `{"name", "draft"}`. Names should match the approved outline;
-    a mismatch returns a warning but we save anyway — Claude can decide whether
-    to re-propose the outline or continue.
-    """
-    outline = await _load_singleton("outline")
-    warnings: list[str] = []
-    if outline:
-        if not outline.get("approved"):
-            warnings.append("outline is not yet approved — approve_outline first to avoid drift")
-        outline_names = {s.get("name") for s in outline.get("sections", [])}
-        skeleton_names = {s.get("name") for s in sections}
-        missing = outline_names - skeleton_names
-        extra = skeleton_names - outline_names
-        if missing:
-            warnings.append(f"skeleton missing outline sections: {sorted(missing)}")
-        if extra:
-            warnings.append(f"skeleton has sections not in outline: {sorted(extra)}")
-
-    async with container.db.connection() as conn:
-        await conn.execute(
-            """
-            INSERT INTO skeleton (id, sections_json, approved, updated_at)
-            VALUES (1, ?, 0, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET
-                sections_json = excluded.sections_json,
-                approved = 0,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (json.dumps(sections),),
-        )
-        await conn.commit()
-    result = {"saved": True, "sections": len(sections), "approved": False}
-    if warnings:
-        result["warnings"] = warnings
-    return result
-
-
-@mcp.tool()
-async def get_skeleton() -> dict[str, Any] | None:
-    """Return the current skeleton (3-5-sentence draft per section), or None
-    if none proposed yet. Counterpart to `get_outline`."""
-    return await _load_singleton("skeleton")
-
-
-@mcp.tool()
-async def approve_skeleton() -> dict[str, Any]:
-    """Mark skeleton as approved. Required before expand_section calls."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute("SELECT 1 FROM skeleton WHERE id = 1")
-        if await cur.fetchone() is None:
-            return {"approved": False, "error": "no skeleton to approve — run save_skeleton first"}
-        await conn.execute(
-            "UPDATE skeleton SET approved = 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
-        )
-        await conn.commit()
-    return {"approved": True}
-
-
-# ─── Expanded section content + drift check ────────────────────────────────
-
-# A section's word count may exceed or undershoot its outline target. Allow up to
-# ±30% of the target, and always tolerate at least 100 words of absolute swing
-# (so a 200-word section has a usable window).
-_DRIFT_TOLERANCE_FRACTION = 0.30
-_DRIFT_TOLERANCE_ABSOLUTE = 100
-
-
-def _check_drift(
-    outline: dict[str, Any] | None,
-    name: str,
-    content: str,
-) -> list[DriftWarning]:
-    """Compute drift warnings for `content` vs. the outline entry for `name`."""
-    warnings: list[DriftWarning] = []
-    if outline is None:
-        warnings.append({"severity": "warn", "kind": "no_outline", "detail": "no outline saved"})
-        return warnings
-    sections: list[OutlineSection] = outline.get("sections", [])
-    target_entry = next((s for s in sections if s.get("name") == name), None)
-    if target_entry is None:
-        warnings.append(
-            {
-                "severity": "high",
-                "kind": "unknown_section",
-                "detail": f"section {name!r} not in outline",
-            }
-        )
-        return warnings
-    target_words = target_entry.get("target_words")
-    actual_words = _word_count(content)
-    if target_words:
-        tolerance = max(_DRIFT_TOLERANCE_ABSOLUTE, int(target_words * _DRIFT_TOLERANCE_FRACTION))
-        if abs(actual_words - target_words) > tolerance:
-            warnings.append(
-                {
-                    "severity": "warn",
-                    "kind": "word_count",
-                    "detail": (
-                        f"{actual_words} words vs target {target_words} (tolerance ±{tolerance})"
-                    ),
-                }
-            )
-    return warnings
-
-
-@mcp.tool()
-async def check_section_drift(name: str, content: str) -> dict[str, Any]:
-    """Report drift warnings for a draft expansion without saving it.
-
-    Claude should call this before `save_section` and surface the result to the
-    user if anything non-empty comes back — they may want to shrink/grow the
-    section or adjust the outline.
-    """
-    outline = await _load_singleton("outline")
-    warnings = _check_drift(outline, name, content)
-    return {
-        "name": name,
-        "word_count": _word_count(content),
-        "warnings": warnings,
-        "has_drift": bool(warnings),
-    }
-
-
-@mcp.tool()
-async def save_section(name: str, content: str) -> dict[str, Any]:
-    """Persist expanded content for one section. Increments version on re-save.
-
-    Drift-checking is a separate tool (`check_section_drift`) so Claude can ask
-    the user before persisting; this tool just writes whatever it was given.
-    """
-    async with container.db.connection() as conn:
-        cur = await conn.execute("SELECT version FROM section_content WHERE name = ?", (name,))
-        row = await cur.fetchone()
-        next_version = (row["version"] + 1) if row else 1
-        await conn.execute(
-            """
-            INSERT INTO section_content (name, content, word_count, version, polished, updated_at)
-            VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
-            ON CONFLICT(name) DO UPDATE SET
-                content = excluded.content,
-                word_count = excluded.word_count,
-                version = ?,
-                polished = 0,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (name, content, _word_count(content), next_version, next_version),
-        )
-        await conn.commit()
-    return {
-        "saved": True,
-        "name": name,
-        "version": next_version,
-        "word_count": _word_count(content),
-    }
 
 
 # ─── Thesis (thesis-first workflow entry point) ────────────────────────────
@@ -301,98 +35,38 @@ async def save_thesis(content: str) -> dict[str, Any]:
     text = content.strip()
     if not text:
         return {"error": "thesis content is empty"}
-    async with container.db.connection() as conn:
-        await conn.execute(
-            """
-            INSERT INTO thesis (id, content, updated_at)
-            VALUES (1, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET
-                content = excluded.content,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (text,),
-        )
-        await conn.commit()
-    return {"saved": True, "word_count": _word_count(text)}
+    await container.project.save_thesis(text)
+    return {"saved": True, "word_count": len(text.split())}
 
 
 @mcp.tool()
 async def get_thesis() -> dict[str, Any] | None:
     """Read the stored thesis. Returns None if never set."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute("SELECT content, updated_at FROM thesis WHERE id = 1")
-        row = await cur.fetchone()
-    if row is None:
+    record = await container.project.thesis_record()
+    if record is None:
         return None
-    return {
-        "content": row["content"],
-        "word_count": _word_count(row["content"]),
-        "updated_at": row["updated_at"],
-    }
+    return {**record, "word_count": len(record["content"].split())}
 
 
-# ─── gap_check ──────────────────────────────────────────────────────────────
+# ─── Citation checks ────────────────────────────────────────────────────────
 
 
 @mcp.tool()
 async def gap_check(
-    min_words: int = _GAP_CHECK_MIN_WORDS,
+    min_words: int = GAP_CHECK_MIN_WORDS,
     sections: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Find sentences in stored sections that make no citations.
+    """Find sentences in section drafts that make no citations.
 
     Returns a list per section of substantive sentences (≥ `min_words` words)
     that contain no `[N]` cite. These are candidates for either backing up
     with a source or trimming. Short connective sentences are skipped — they
     legitimately don't cite. Not a strict lint; a prompt for the author.
 
-    `sections` optionally restricts to a subset by name. With no sections in
-    the DB, returns empty `gaps` and `total_gaps = 0`.
+    `sections` optionally restricts to a subset by title. With no drafts,
+    returns empty `gaps` and `total_gaps = 0`.
     """
-    rows = [
-        {"name": r["title"], "content": r["content"]}
-        for r in await container.sections.load_document_sections()
-        if sections is None or r["title"] in sections
-    ]
-
-    gaps: list[dict[str, Any]] = []
-    total = 0
-    for row in rows:
-        name = row["name"]
-        content = row["content"] or ""
-        uncited: list[dict[str, Any]] = []
-        for sentence in _SENTENCE_SPLIT_RE.split(content):
-            stripped = sentence.strip()
-            wc = _word_count(stripped)
-            if wc < min_words:
-                continue
-            if _CITE_REF_RE.search(stripped):
-                continue
-            uncited.append({"sentence": stripped, "word_count": wc})
-        if uncited:
-            gaps.append({"section": name, "count": len(uncited), "sentences": uncited})
-            total += len(uncited)
-    return {"total_gaps": total, "min_words": min_words, "gaps": gaps}
-
-
-def _rewrite_cite_ids(text: str, mapping: dict[int, int]) -> tuple[str, int]:
-    """Remap `[N]` ids in `text` through `mapping`; returns (new_text, refs_replaced)."""
-    replaced = 0
-
-    def _replace(match: re.Match[str]) -> str:
-        nonlocal replaced
-        # Preserve original separators so `[1, 2; 3]` keeps its shape.
-        out: list[str] = []
-        for part in re.split(r"([,;]\s*)", match.group(1)):
-            new = mapping.get(int(part)) if part.isdigit() else None
-            if new is None:
-                out.append(part)
-            else:
-                out.append(str(new))
-                replaced += 1
-        return "[" + "".join(out) + "]"
-
-    return _CITE_REF_RE.sub(_replace, text), replaced
+    return await container.citations.gap_check(min_words, sections)
 
 
 @mcp.tool()
@@ -400,276 +74,23 @@ async def rewrite_citations(
     mapping: dict[str, int],
     sections: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Bulk-rewrite `[N]` paper-id citations across stored sections.
+    """Bulk-rewrite `[N]` paper-id citations across section drafts.
 
     `mapping` keys are stringified old paper ids (JSON dicts carry string
     keys); values are the new ids. Only cite refs whose id appears in
     `mapping` are touched — other ids are left alone.
 
-    `sections` optionally restricts the rewrite to a subset of section names;
-    default is every row in `section_content`. Each modified section gets its
-    `version` incremented and `polished` reset to 0 — downstream tools will
-    treat the rewrite as a fresh revision.
+    `sections` optionally restricts the rewrite to a subset of section titles;
+    default is every section holding a draft.
 
     Purpose: give Claude a first-class way to fix citations after paper-id
     renumbering (dedup, merge, deletion) instead of hand-editing the rendered
     `.tex` / `.typ` through sed. See CLAUDE.md "Stuck detection".
     """
-    if not mapping:
-        return {"modified": [], "refs_replaced": 0, "sections_scanned": 0}
-
-    # Coerce keys to int so the replacement function does integer lookups.
-    try:
-        int_mapping = {int(k): int(v) for k, v in mapping.items()}
-    except (TypeError, ValueError) as e:
-        return {"error": f"mapping must be {{int: int}} (strings OK): {e}"}
-
-    total_replaced = 0
-    modified: list[dict[str, Any]] = []
-
-    async with container.db.connection() as conn:
-        if sections is None:
-            cur = await conn.execute("SELECT name, content, version FROM section_content")
-        else:
-            placeholders = ",".join("?" * len(sections))
-            cur = await conn.execute(
-                f"SELECT name, content, version FROM section_content WHERE name IN ({placeholders})",  # noqa: S608 — bound placeholder count
-                sections,
-            )
-        rows = await cur.fetchall()
-
-        for row in rows:
-            name = row["name"]
-            new_content, section_replaced = _rewrite_cite_ids(row["content"] or "", int_mapping)
-            if section_replaced == 0:
-                continue
-
-            next_version = row["version"] + 1
-            await conn.execute(
-                """
-                UPDATE section_content
-                SET content = ?, word_count = ?, version = ?,
-                    polished = 0, updated_at = CURRENT_TIMESTAMP
-                WHERE name = ?
-                """,
-                (new_content, _word_count(new_content), next_version, name),
-            )
-            total_replaced += section_replaced
-            modified.append(
-                {"name": name, "refs_replaced": section_replaced, "version": next_version}
-            )
-
-        # v0.3 sections: drafts are matched by title.
-        cur = await conn.execute("SELECT id, title, draft FROM sections WHERE draft != ''")
-        draft_rows = [r for r in await cur.fetchall() if sections is None or r["title"] in sections]
-        for row in draft_rows:
-            new_draft, section_replaced = _rewrite_cite_ids(row["draft"], int_mapping)
-            if section_replaced == 0:
-                continue
-            await conn.execute(
-                "UPDATE sections SET draft = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (new_draft, row["id"]),
-            )
-            total_replaced += section_replaced
-            modified.append({"name": row["title"], "refs_replaced": section_replaced})
-
-        await conn.commit()
-
-    return {
-        "modified": modified,
-        "refs_replaced": total_replaced,
-        "sections_scanned": len(rows) + len(draft_rows),
-    }
+    return await container.citations.rewrite(mapping, sections)
 
 
-@mcp.tool()
-async def regenerate_section_brief(name: str, feedback: str) -> dict[str, Any]:
-    """Bundle the context Claude needs to rewrite a section given user feedback.
-
-    Does NOT write — returns the current section content, the outline entry,
-    assigned paper abstracts, and the user's feedback string so Claude can
-    produce a revision. Persist the result via `save_section(name, revision)`.
-
-    Use this instead of free-hand rewriting: it guarantees the revision
-    considers the outline target (word count + paper_ids) and has the
-    feedback threaded through.
-    """
-    async with container.db.connection() as conn:
-        cur = await conn.execute(
-            "SELECT content, word_count, version, polished FROM section_content WHERE name = ?",
-            (name,),
-        )
-        row = await cur.fetchone()
-        if row is None:
-            return {"error": f"section {name!r} not found — run save_section first"}
-        current = {k: row[k] for k in row.keys()}
-
-        cur = await conn.execute("SELECT sections_json FROM outline WHERE id = 1")
-        outline_row = await cur.fetchone()
-    outline_entry: dict[str, Any] | None = None
-    paper_ids: list[int] = []
-    artifact_ids: list[int] = []
-    if outline_row:
-        outline_sections = json.loads(outline_row["sections_json"])
-        outline_entry = next((s for s in outline_sections if s.get("name") == name), None)
-        if outline_entry:
-            paper_ids = outline_entry.get("paper_ids") or []
-            artifact_ids = outline_entry.get("artifact_ids") or []
-
-    assigned_papers = await container.papers.load_by_ids(paper_ids)
-    assigned_artifacts = [
-        dict(a) for a in await load_artifacts_by_ids(artifact_ids) if a["included"]
-    ]
-
-    return {
-        "name": name,
-        "current": current,
-        "outline_entry": outline_entry,
-        "assigned_papers": assigned_papers,
-        "assigned_artifacts": assigned_artifacts,
-        "feedback": feedback,
-        "instructions": (
-            "Produce a revised section that addresses the feedback. Respect the "
-            "outline's target_words (±30%), cite only assigned_papers for "
-            "scholarly sources, and reference assigned_artifacts (interviews, "
-            "code, notes) using their citation_label (e.g. [I:3], [C:auth.py]). "
-            "When done, call save_section(name, revised_content)."
-        ),
-    }
-
-
-@mcp.tool()
-async def get_section_content(name: str) -> dict[str, Any] | None:
-    """One v0.2 section body by name (see `get_section` for v0.3 sections by id)."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute(
-            "SELECT name, content, word_count, version, polished, updated_at "
-            "FROM section_content WHERE name = ?",
-            (name,),
-        )
-        row = await cur.fetchone()
-    if row is None:
-        return None
-    return {k: row[k] for k in row.keys()}
-
-
-@mcp.tool()
-async def list_section_contents() -> list[dict[str, Any]]:
-    """All persisted v0.2 section bodies with metadata (no content bodies). For session restore."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute(
-            "SELECT name, word_count, version, polished, updated_at "
-            "FROM section_content ORDER BY updated_at"
-        )
-        rows = await cur.fetchall()
-    return [{k: r[k] for k in r.keys()} for r in rows]
-
-
-# ─── Polish ─────────────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-async def polish_section(name: str, polished_content: str) -> dict[str, Any]:
-    """Save the polished version of one section (local pass — transitions within section).
-
-    Sets `polished=1`. Claude runs this after expand_section when local cleanup is
-    needed; it's distinct from `polish_document` which is a global pass.
-    """
-    wc = _word_count(polished_content)
-    async with container.db.connection() as conn:
-        cur = await conn.execute("SELECT version FROM section_content WHERE name = ?", (name,))
-        row = await cur.fetchone()
-        if row is None:
-            return {"error": f"section {name!r} not found — run save_section first"}
-        next_version = row["version"] + 1
-        await conn.execute(
-            """
-            UPDATE section_content
-            SET content = ?, word_count = ?, version = ?, polished = 1,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE name = ?
-            """,
-            (polished_content, wc, next_version, name),
-        )
-        await conn.commit()
-    return {"polished": True, "name": name, "version": next_version, "word_count": wc}
-
-
-@mcp.tool()
-async def polish_document(sections: list[dict[str, str]]) -> dict[str, Any]:
-    """Save the global-pass polished versions for multiple sections at once.
-
-    Each entry: `{"name", "content"}`. Sections not already saved are rejected —
-    the global pass operates on content produced by `expand_section`.
-    """
-    updated: list[str] = []
-    missing: list[str] = []
-    async with container.db.connection() as conn:
-        for s in sections:
-            name = s["name"]
-            cur = await conn.execute("SELECT version FROM section_content WHERE name = ?", (name,))
-            row = await cur.fetchone()
-            if row is None:
-                missing.append(name)
-                continue
-            next_version = row["version"] + 1
-            await conn.execute(
-                """
-                UPDATE section_content
-                SET content = ?, word_count = ?, version = ?, polished = 1,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE name = ?
-                """,
-                (s["content"], _word_count(s["content"]), next_version, name),
-            )
-            updated.append(name)
-        await conn.commit()
-    return {"updated": updated, "missing": missing}
-
-
-# ─── PRISMA flow + overview table ──────────────────────────────────────────
-
-
-async def _prisma_counts() -> dict[str, Any]:
-    """Aggregate review_history into the four PRISMA buckets.
-
-    identified = #papers ever recorded (any status change entry)
-    screened = #papers where latest status is anything except unreviewed
-    excluded = #papers currently rejected, grouped by distinct reason
-    included = #papers currently approved
-    """
-    async with container.db.connection() as conn:
-        # identified: distinct papers that ever passed through review_history.
-        cur = await conn.execute("SELECT COUNT(DISTINCT paper_id) FROM review_history")
-        identified = (await cur.fetchone())[0]
-
-        cur = await conn.execute(
-            "SELECT COUNT(*) FROM reviews WHERE status IN ('approved','rejected','maybe')"
-        )
-        screened = (await cur.fetchone())[0]
-
-        cur = await conn.execute("SELECT COUNT(*) FROM reviews WHERE status = 'approved'")
-        included = (await cur.fetchone())[0]
-
-        cur = await conn.execute(
-            """
-            SELECT COALESCE(reason, '(no reason)') AS reason, COUNT(*) AS n
-            FROM reviews WHERE status = 'rejected'
-            GROUP BY reason ORDER BY n DESC
-            """
-        )
-        excluded_by_reason = [
-            {"reason": r["reason"], "count": r["n"]} for r in await cur.fetchall()
-        ]
-
-    excluded_total = sum(e["count"] for e in excluded_by_reason)
-    return {
-        "identified": identified,
-        "screened": screened,
-        "excluded_total": excluded_total,
-        "excluded_by_reason": excluded_by_reason,
-        "included": included,
-    }
+# ─── PRISMA flow, overview table, artifact snippets ────────────────────────
 
 
 @mcp.tool()
@@ -680,7 +101,7 @@ async def generate_prisma_flow(backend: Backend = "typst") -> dict[str, Any]:
     plus the raw counts, so Claude can paste the snippet into the document or
     summarize the counts in prose.
     """
-    counts = await _prisma_counts()
+    counts = await container.reviews.prisma_counts()
     return {"backend": backend, "counts": counts, "snippet": prisma_flow(counts, backend)}
 
 
