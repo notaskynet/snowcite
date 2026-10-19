@@ -8,7 +8,6 @@ library work against the container (repositories) and source layers.
 from snowcite.container import Container, container
 from snowcite.domain.models import ApprovedPaper, Paper, PersistResult
 from snowcite.domain.types import (
-    Backend,
     Confidence,
     Direction,
     Phase,
@@ -30,7 +29,6 @@ __version__ = "0.1.0"
 
 __all__ = [
     "ApprovedPaper",
-    "Backend",
     "Confidence",
     "Container",
     "Direction",

@@ -1,24 +1,17 @@
-"""Export approved bibliography and the document to external formats.
+"""Export the approved bibliography.
 
 - `export_bibtex` — `.bib` from the current approved set
 - `export_ris` — RIS flavored for Mendeley / EndNote import
-- `export_docx` — shells out to pandoc to convert the rendered document
 """
 
-import asyncio
-import shutil
 from pathlib import Path
 from typing import Any
 
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.bibliography import build_bibtex_document
 from snowcite.domain.models import ApprovedPaper
-from snowcite.logging import log
-from snowcite.render.bibliography import build_bibtex_document
 from snowcite.storage.projects import require_project_root
-
-
-_EXPORT_TIMEOUT_SECONDS = 120
 
 
 def _default_output_path(name: str) -> Path:
@@ -68,43 +61,3 @@ async def export_ris(output_path: str | None = None) -> dict[str, Any]:
     path = Path(output_path) if output_path else _default_output_path("references.ris")
     path.write_text(body, encoding="utf-8")
     return {"path": str(path), "entries": len(papers)}
-
-
-# ─── DOCX (via pandoc) ──────────────────────────────────────────────────────
-
-
-@mcp.tool()
-async def export_docx(source_path: str, output_path: str | None = None) -> dict[str, Any]:
-    """Convert `review.tex` or `review.typ` to `.docx` via pandoc.
-
-    Pandoc is the bridge; humanities users commonly need Word-compatible
-    output for supervisor review. Bibliography citations may degrade to plain
-    text — that's a pandoc limitation.
-    """
-    if shutil.which("pandoc") is None:
-        return {
-            "success": False,
-            "error": "pandoc not found on PATH — `brew install pandoc` or equivalent",
-        }
-    src = Path(source_path).resolve()
-    if not src.exists():
-        return {"success": False, "error": f"file not found: {source_path}"}
-
-    dst = Path(output_path) if output_path else src.with_suffix(".docx")
-    cmd = ["pandoc", str(src), "-o", str(dst)]
-    log.info("pandoc %s → %s", src, dst)
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_EXPORT_TIMEOUT_SECONDS)
-    except TimeoutError:
-        proc.kill()
-        return {"success": False, "error": f"pandoc timed out after {_EXPORT_TIMEOUT_SECONDS}s"}
-
-    combined = stdout.decode(errors="replace") + stderr.decode(errors="replace")
-    if proc.returncode != 0:
-        return {"success": False, "error": f"pandoc exit {proc.returncode}", "log": combined}
-    return {"success": True, "path": str(dst), "log": combined or None}

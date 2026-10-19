@@ -111,22 +111,6 @@ def critique_verdict(blockers: int, iteration: int) -> tuple[bool, str]:
     return False, "blockers remain; revise and re-critique"
 
 
-def next_section_action(section: dict[str, Any]) -> str:
-    """What the next writing step for an unfinished section is.
-
-    draft    — no text yet
-    critique — text exists but hasn't been critiqued (or was just revised)
-    revise   — critiqued, blockers remain and the iteration cap isn't reached
-    finish   — critiqued and the stop criterion holds: mark it done
-    """
-    if not section["draft"].strip():
-        return "draft"
-    if section["status"] != "critiqued":
-        return "critique"
-    stop, _ = critique_verdict(section["severity"]["blockers"], section["critique_iterations"])
-    return "finish" if stop else "revise"
-
-
 # ─── Synthesis ──────────────────────────────────────────────────────────────
 
 # Fewer per-paper notes than this and synthesis can't be meaningful yet.

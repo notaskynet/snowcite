@@ -23,10 +23,6 @@ SETTINGS_ALLOWLIST = [
     "Glob",
     "Grep",
     "WebSearch",
-    # Compile backends. `compile_pdf` calls these internally, but direct
-    # invocation is useful for diagnostics (`typst --version`, font listing).
-    "Bash(typst:*)",
-    "Bash(tectonic:*)",
 ]
 
 
@@ -59,7 +55,6 @@ class ClaudeFiles:
         defaults = {
             "language": "en",
             "standard": "plain",
-            "backend": "typst",
             "review_strictness": "standard",
         }
         ctx = {k: _neutralize(v) for k, v in {**defaults, **metadata}.items()}

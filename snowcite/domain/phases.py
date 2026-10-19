@@ -18,9 +18,6 @@ class WorkflowState:
     summary_current: bool = False  # a summary exists and isn't stale
     per_paper_notes: int = 0
     cross_paper_notes: int = 0
-    sections_total: int = 0
-    has_unfinished_section: bool = False
-    document_current: bool = False  # a PDF exists and is newer than every section edit
 
 
 @dataclass(frozen=True)
@@ -109,21 +106,11 @@ def decide(s: WorkflowState) -> Step:  # noqa: PLR0911 — one return per phase
                 "find_gaps() afterwards",
             ],
         )
-    if s.sections_total == 0:
-        return Step(
-            "outline",
-            "The corpus is reviewed; the document has no sections yet.",
-            [
-                "Propose sections from `clusters` and `thesis` (title + scope) to the user",
-                "After approval: bulk_create_sections([...])",
-            ],
-        )
-    if s.has_unfinished_section:
-        return Step("writing", "Sections remain to be written or finished.", [])
-    if not s.document_current:
-        return Step(
-            "build",
-            "All sections are done; the PDF is missing or older than the text.",
-            ["write_document(title, author, ...)", "compile_pdf(doc_path)"],
-        )
-    return Step("done", "The document is built and up to date.", [])
+    return Step(
+        "done",
+        "The corpus is reviewed and synthesised; the literature work is complete.",
+        [
+            "Hand over to the writing skills: the notes graph, clusters and papers are the source",
+            "get_papers_for_writing(cluster=...) / get_cluster_notes(cluster) for the material",
+        ],
+    )

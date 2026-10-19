@@ -82,7 +82,6 @@ async def test_init_creates_claude_md_and_dirs(isolated_cwd: Path):
             "language": "ru",
             "discipline": "cs",
             "standard": "gost",
-            "backend": "typst",
         }
     )
     assert Path(result["claude_md_path"]).exists()
@@ -92,7 +91,7 @@ async def test_init_creates_claude_md_and_dirs(isolated_cwd: Path):
     text = Path(result["claude_md_path"]).read_text()
     assert "Jane Doe" in text
     assert "Discipline" in text  # rendered section
-    assert "typst" in text
+    assert "gost" in text
 
 
 @pytest.mark.asyncio
@@ -104,7 +103,6 @@ async def test_init_persists_metadata_and_reads_back(isolated_cwd: Path):
             "year": 2026,
             "discipline": "medicine",
             "standard": "vancouver",
-            "backend": "latex",
             "language": "en",
         }
     )
@@ -202,11 +200,10 @@ async def test_apply_settings_diff_skip(isolated_cwd: Path):
 
 
 @pytest.mark.asyncio
-async def test_claude_md_contains_language_and_backend(isolated_cwd: Path):
-    result = await init_project(metadata={"language": "fr", "backend": "latex", "standard": "apa"})
+async def test_claude_md_contains_language_and_standard(isolated_cwd: Path):
+    result = await init_project(metadata={"language": "fr", "standard": "apa"})
     text = Path(result["claude_md_path"]).read_text()
     assert "fr" in text
-    assert "latex" in text
     assert "apa" in text
 
 

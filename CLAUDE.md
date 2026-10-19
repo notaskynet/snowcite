@@ -4,7 +4,7 @@ Guide for Claude Code sessions in the snowcite repo.
 
 ## What this is
 
-`snowcite` is an MCP server for systematic literature review. Search across arXiv / Semantic Scholar / OpenAlex, snowball through citations, review papers through chat (not UI), generate LaTeX/Typst, compile to PDF via tectonic or typst.
+`snowcite` is an MCP server for systematic literature review. Search across arXiv / Semantic Scholar / OpenAlex, snowball through citations, review papers through chat (not UI), keep a notes graph and cross-paper synthesis. Writing the document is the model's job (skills); snowcite builds no PDF.
 
 ## Architectural invariant
 
@@ -129,7 +129,6 @@ Write in the user's project language natively — don't translate from English w
 - **Do not integrate Zotero** (neither API nor CSL-JSON import). BibTeX / RIS import via `import_refs` is deliberately kept narrow.
 - **Do not parse PDFs yourself.** Use abstracts from the source APIs.
 - **Do not recommend a decision on borderline papers.** Show facts; let the user decide.
-- **Do not use a system TeXLive.** Only tectonic (for LaTeX) or the typst binary.
 - **Do not draft a section without notes for its scope.** If `get_section_critique_inputs` returns an empty `notes` array, the section's claims won't be supported. Either review more papers into those clusters or narrow the scope.
 - **Do not auto-trigger `research_section` or `expand_citations` from inside the critique loop.** Critique reports gaps; the user decides whether the cost of more search is justified.
 - **Do not invent cluster names.** Clusters come from `review_summary`. New labels in notes or section scope cause `find_gaps` to flag them as unknown — and break the link between the graph and the corpus.
@@ -159,12 +158,6 @@ claude mcp add snowcite \
 
 # for development (from a clone)
 uv sync && uv run python -m snowcite.server
-
-# tectonic (needed for compile_pdf in LaTeX mode)
-brew install tectonic
-
-# typst (needed for compile_pdf in Typst mode)
-brew install typst
 ```
 
 ## Project layout
@@ -175,15 +168,14 @@ snowcite/
 ├── app.py                 # FastMCP instance shared by all tool modules
 ├── settings.py            # pydantic-settings, env SNOWCITE_*
 ├── container.py           # builds Database, repositories and services (the one wiring point)
-├── domain/                # pure: models, types (Literals), dedup, citations, rules (invariants)
-├── services/              # Review, Note, Section, Synthesis, Search, Citation, Artifact, Build services: validation + orchestration
+├── domain/                # pure: models, types (Literals), dedup, citations, bibliography (BibTeX + cite keys), rules, phases
+├── services/              # Review, Note, Section, Synthesis, Search, Citation, Artifact, Project, Workflow services: validation + orchestration
 ├── storage/               # Database, schema + migrations, projects.py (.snowcite/ resolver),
 │   └── repositories/      #   Paper, Review, Note, Section, Project, Artifact repositories
-├── render/                # DocumentBackend (Typst/Latex), Compiler, bibliography, snippets, templates
 ├── logging.py             # shared `log` instance
 ├── sources/               # SourceClient ABC + one class per source (arxiv, semantic_scholar, openalex, crossref, pubmed), _http
 ├── templates/             # agents/*.md.j2, claude_md.j2 (move to skills)
-└── tools/                 # search, review, writing, compile, export, doctor, init,
+└── tools/                 # search, review, writing, export, doctor, init,
                            #   session (next_step), import_refs
 <project>/.snowcite/papers.db   # user-project DB (not in this repo)
 ```

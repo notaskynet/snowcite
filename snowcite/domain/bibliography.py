@@ -1,9 +1,4 @@
-"""Bibliography generation — BibTeX (for LaTeX) and Hayagriva YAML (for Typst).
-
-The same paper metadata flows into both formats. BibTeX is the classic; Hayagriva
-is Typst's native bibliography format (https://github.com/typst/hayagriva), which
-Typst's `#bibliography()` function accepts alongside `.bib`.
-"""
+"""BibTeX generation and cite keys for approved papers. Pure."""
 
 import re
 import unicodedata
@@ -142,53 +137,7 @@ def generate_bibtex(
     return "\n".join(lines)
 
 
-# ─── Hayagriva YAML (Typst) ─────────────────────────────────────────────────
-
-# Hayagriva is Typst's native bibliography format. Docs:
-# https://github.com/typst/hayagriva/blob/main/docs/file-format.md
-#
-# We produce a trivially-valid quoted subset — no need for PyYAML at runtime.
-
-
-def _yaml_quote(s: str) -> str:
-    """Double-quote a YAML string, escaping double-quotes and backslashes."""
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def generate_hayagriva_entry(
-    cite_key: str,
-    title: str,
-    authors: list[str],
-    year: int | None,
-    venue: str | None = None,
-    doi: str | None = None,
-    source: str | None = None,
-) -> str:
-    """Return a Hayagriva YAML fragment for one entry (starts with `<key>:`).
-
-    Joining fragments with "\\n\\n" produces a valid Hayagriva file.
-    """
-    # arXiv / arxiv-venue → `web` (Hayagriva has no native preprint type).
-    entry_type = "article"
-    if source == "arxiv" or (venue and "arxiv" in venue.lower()):
-        entry_type = "web"
-
-    lines = [f"{cite_key}:"]
-    lines.append(f"  type: {entry_type}")
-    lines.append(f"  title: {_yaml_quote(title)}")
-    if authors:
-        lines.append("  author:")
-        lines.extend(f"    - {_yaml_quote(a)}" for a in authors)
-    if year:
-        lines.append(f'  date: "{year}"')
-    if venue:
-        lines.append("  parent:")
-        lines.append("    type: periodical")
-        lines.append(f"    title: {_yaml_quote(venue)}")
-    if doi:
-        lines.append("  serial-number:")
-        lines.append(f"    doi: {_yaml_quote(doi)}")
-    return "\n".join(lines)
+# ─── Cite keys and the document ─────────────────────────────────────────────
 
 
 def assign_cite_keys(entries: list[dict[str, Any]]) -> list[tuple[dict[str, Any], str]]:
@@ -272,70 +221,3 @@ def build_bibtex_document(entries: list[dict[str, Any]]) -> str:
         entry = re.sub(r"^(@[A-Za-z]+\{)[^,]+,", rf"\1{key},", entry, count=1)
         out.append(entry)
     return "\n\n".join(out)
-
-
-def generate_hayagriva(entries: list[dict[str, Any]]) -> str:
-    """Build a full Hayagriva YAML document from a list of paper dicts.
-
-    Each dict needs: title, authors, year, venue, doi, source. Cite keys come
-    from `assign_cite_keys` — same source the BibTeX path uses.
-    """
-    fragments: list[str] = []
-    for e, key in assign_cite_keys(entries):
-        fragments.append(
-            generate_hayagriva_entry(
-                cite_key=key,
-                title=e.get("title") or "",
-                authors=e.get("authors") or [],
-                year=e.get("year"),
-                venue=e.get("venue"),
-                doi=e.get("doi"),
-                source=e.get("source"),
-            )
-        )
-    return "\n\n".join(fragments) + "\n"
-
-
-# ─── In-text citation rewriter ──────────────────────────────────────────────
-
-# Matches `[N]`, `[N, M]`, `[N; M]`, `[N,M,K]` — bracketed groups of one or
-# more comma/semicolon-separated integers. Conservative: won't match `[foo]`,
-# `[@key]`, `[N-M]` or prose containing numbers mid-sentence.
-_CITE_REF_RE = re.compile(r"\[(\d+(?:\s*[,;]\s*\d+)*)\]")
-
-
-def rewrite_cite_refs(content: str, id_to_key: dict[int, str], backend: str) -> str:
-    """Rewrite `[N]` paper-id citations in text to backend-native cite syntax.
-
-    Paper IDs are the DB row ids returned by `save_papers` / visible in
-    `get_unreviewed_papers`. Claude writes text using those (e.g. "...shown
-    in [61, 62]..."), this function resolves them to the real cite keys.
-
-    - LaTeX backend → `\\cite{key1,key2}` (biblatex/natbib grouping).
-    - Typst backend → `@key1 @key2` (numeric styles collapse consecutive refs).
-
-    Unknown ids are left as-is with a warning logged — so the output compiles
-    but the reviewer can spot orphans in the rendered PDF.
-    """
-
-    def _replace(match: re.Match[str]) -> str:
-        raw_ids = [int(x.strip()) for x in re.split(r"[,;]", match.group(1))]
-        keys: list[str] = []
-        for pid in raw_ids:
-            k = id_to_key.get(pid)
-            if k is None:
-                log.warning(
-                    "rewrite_cite_refs: paper id %d not in approved set — left as [%d]",
-                    pid,
-                    pid,
-                )
-                return match.group(0)
-            keys.append(k)
-        if backend == "latex":
-            return "\\cite{" + ",".join(keys) + "}"
-        # Typst: space-join so consecutive `@k` refs survive intact; numeric
-        # CSL styles (ieee, gost-r-705-2008-numeric) collapse them into
-        # "[1, 2]" at render time.
-        return " ".join(f"@{k}" for k in keys)
-
-    return _CITE_REF_RE.sub(_replace, content)

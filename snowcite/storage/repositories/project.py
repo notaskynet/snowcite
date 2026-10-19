@@ -33,29 +33,6 @@ class ProjectRepository:
             row = await cur.fetchone()
         return {k: row[k] for k in row.keys()} if row else {}
 
-    async def switch_backend(self, new_backend: str, wipe_sections: bool) -> None:
-        """Set the backend; optionally clear section text written in the old syntax.
-
-        One transaction: drafts must never survive a backend they can't compile under.
-        """
-        async with self._db.connection() as conn:
-            if wipe_sections:
-                await conn.execute(
-                    "UPDATE sections SET draft = '', status = 'outline', blockers = 0, "
-                    "should_fix = 0, nits = 0, critique_iterations = 0 WHERE draft != ''"
-                )
-            await conn.execute(
-                """
-                INSERT INTO project_metadata (id, backend, updated_at)
-                VALUES (1, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(id) DO UPDATE SET
-                    backend = excluded.backend,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (new_backend,),
-            )
-            await conn.commit()
-
     async def thesis(self) -> str | None:
         async with self._db.connection() as conn:
             cur = await conn.execute("SELECT content FROM thesis WHERE id = 1")
@@ -113,7 +90,6 @@ class ProjectRepository:
         "discipline",
         "standard",
         "methodology",
-        "backend",
         "review_strictness",
         "deadline",
         "target_pages",
