@@ -16,6 +16,17 @@ This tool supports **peer-reviewed academic literature review**. Papers fetched 
 
 When a research area involves sensitive topics (AI safety, security, dual-use research, biosecurity, etc.), handle the associated abstracts the same way a human reviewer would: paraphrase in your own words, summarize findings, cite responsibly. **Never copy verbatim passages that contain operational/harmful detail from abstracts into the chat context** — summarize in one or two neutral sentences instead.
 
+## Start here: `next_step()`
+
+Call `next_step()` first in every session and after every batch. It derives the
+phase from the database (`not_started → criteria → search → review →
+low_confidence → synthesis → outline → writing → build → done`), returns the
+ordered `do` actions and a `payload` with the data that phase needs. Gates live
+in code: the next review batch is withheld until the rolling summary is saved,
+unconfirmed `auto_low` decisions block the outline, and a section with no notes
+for its scope can't be drafted. The sections below describe what each phase
+means.
+
 ## Review workflow (your primary loop)
 
 1. **Before every batch** — call `get_review_criteria()`. Criteria may have been set long ago; this is a drift guard.
@@ -173,7 +184,7 @@ snowcite/
 ├── sources/               # SourceClient ABC + one class per source (arxiv, semantic_scholar, openalex, crossref, pubmed), _http
 ├── templates/             # agents/*.md.j2, claude_md.j2 (move to skills)
 └── tools/                 # search, review, writing, compile, export, doctor, init,
-                           #   session, review_quality, import_refs
+                           #   session (next_step), import_refs
 <project>/.snowcite/papers.db   # user-project DB (not in this repo)
 ```
 

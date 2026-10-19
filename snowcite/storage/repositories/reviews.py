@@ -270,6 +270,12 @@ class ReviewRepository:
             counts[row[0]] = row[1]
         return counts
 
+    async def count_auto_low(self) -> int:
+        """Decisions made at `auto_low` confidence that the user hasn't confirmed."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute("SELECT COUNT(*) FROM reviews WHERE reviewed_by = 'auto_low'")
+            return (await cur.fetchone())[0]
+
     async def live_counts(self) -> dict[str, int]:
         async with self._db.connection() as conn:
             return await self._live_counts(conn)

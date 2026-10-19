@@ -225,6 +225,38 @@ class SectionRepository:
             cur = await conn.execute("SELECT COUNT(*) FROM sections WHERE draft != ''")
             return (await cur.fetchone())[0]
 
+    async def next_unfinished(self) -> dict[str, Any] | None:
+        """First section in document order that isn't done.
+
+        A heading-only parent (no text of its own, has children) is skipped: its
+        children carry the writing.
+        """
+        records = await self.list_all()
+        has_children = {r["parent_id"] for r in records if r["parent_id"] is not None}
+        by_parent: dict[int | None, list[dict[str, Any]]] = {}
+        for r in records:
+            by_parent.setdefault(r["parent_id"], []).append(r)
+
+        def walk(parent_id: int | None) -> dict[str, Any] | None:
+            for r in by_parent.get(parent_id, []):
+                heading_only = r["id"] in has_children and not r["draft"].strip()
+                if r["status"] != "done" and not heading_only:
+                    return r
+                found = walk(r["id"])
+                if found:
+                    return found
+            return None
+
+        return walk(None)
+
+    async def last_edit_epoch(self) -> int | None:
+        """Unix time of the newest section edit (UTC), or None without sections."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                "SELECT CAST(strftime('%s', MAX(updated_at)) AS INTEGER) FROM sections"
+            )
+            return (await cur.fetchone())[0]
+
     async def progress_counts(self) -> dict[str, int]:
         """`{total, drafted, done}` section counts."""
         async with self._db.connection() as conn:

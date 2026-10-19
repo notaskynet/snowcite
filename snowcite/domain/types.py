@@ -20,12 +20,14 @@ type Backend = Literal["latex", "typst"]
 type Severity = Literal["ok", "warn", "error"]
 type Phase = Literal[
     "not_started",
-    "criteria_set",
-    "reviewing",
-    "snowballing",
-    "outlined",
+    "criteria",
+    "search",
+    "review",
+    "low_confidence",
+    "synthesis",
+    "outline",
     "writing",
-    "polishing",
+    "build",
     "done",
 ]
 type ArtifactType = Literal["interview", "code", "document", "note", "dataset"]

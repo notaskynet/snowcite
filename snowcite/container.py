@@ -11,6 +11,7 @@ from snowcite.services import (
     SearchService,
     SectionService,
     SynthesisService,
+    WorkflowService,
 )
 from snowcite.services.claude_files import ClaudeFiles
 from snowcite.sources.arxiv_client import ArxivSource
@@ -68,6 +69,15 @@ class Container:
         self.project_service = ProjectService(self.db, self.project, ClaudeFiles())
         self.artifact_service = ArtifactService(self.artifacts)
         self.citations = CitationService(self.sections)
+        self.workflow = WorkflowService(
+            self.reviews,
+            self.notes,
+            self.sections,
+            self.project,
+            self.review_service,
+            self.section_service,
+            self.synthesis,
+        )
         self.build = BuildService(self.papers, self.sections, self.project, Compiler())
 
 

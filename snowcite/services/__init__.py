@@ -7,6 +7,7 @@ from snowcite.services.review import ReviewService
 from snowcite.services.search import SearchService
 from snowcite.services.sections import SectionService
 from snowcite.services.synthesis import SynthesisService
+from snowcite.services.workflow import WorkflowService
 
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "SearchService",
     "SectionService",
     "SynthesisService",
+    "WorkflowService",
 ]
