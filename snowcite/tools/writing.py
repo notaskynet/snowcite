@@ -17,7 +17,7 @@ from snowcite.artifacts import (
 )
 from snowcite.container import container
 from snowcite.domain.types import Backend, DriftWarning, OutlineSection
-from snowcite.rendering import (
+from snowcite.render.snippets import (
     include_code,
     overview_table,
     primary_sources_appendix,

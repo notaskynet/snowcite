@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from snowcite.app import mcp
-from snowcite.bibliography import build_bibtex_document
 from snowcite.container import container
 from snowcite.domain.models import ApprovedPaper
 from snowcite.logging import log
+from snowcite.render.bibliography import build_bibtex_document
 from snowcite.storage.projects import require_project_root
 
 

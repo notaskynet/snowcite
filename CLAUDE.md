@@ -165,14 +165,13 @@ snowcite/
 ├── settings.py            # pydantic-settings, env SNOWCITE_*
 ├── container.py           # builds Database, repositories and services (the one wiring point)
 ├── domain/                # pure: models, types (Literals), dedup, citations, rules (invariants)
-├── services/              # ReviewService, NoteService: validation + orchestration
+├── services/              # ReviewService, NoteService, BuildService: validation + orchestration
 ├── storage/               # Database, schema + migrations, projects.py (.snowcite/ resolver),
 │   └── repositories/      #   PaperRepository, ReviewRepository, SectionRepository
-├── rendering.py           # backend-aware PRISMA / overview renderers
-├── bibliography.py        # BibTeX + Hayagriva generation
+├── render/                # DocumentBackend (Typst/Latex), Compiler, bibliography, snippets, templates
 ├── logging.py             # shared `log` instance
 ├── sources/               # arxiv / semantic_scholar / openalex / crossref / pubmed + _http
-├── templates/             # latex/*.tex.j2, typst/*.typ.j2, agents/*.md.j2, claude_md.j2
+├── templates/             # agents/*.md.j2, claude_md.j2 (move to skills)
 └── tools/                 # search, review, writing, compile, export, doctor, init,
                            #   session, review_quality, import_refs
 <project>/.snowcite/papers.db   # user-project DB (not in this repo)
