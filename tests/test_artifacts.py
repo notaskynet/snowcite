@@ -56,9 +56,9 @@ async def test_list_filters_by_type_and_included(tmp_project: Path):
 
 
 def test_citation_label_format():
-    assert citation_label({"id": 3, "type": "interview"}) == "[I:3]"  # type: ignore[arg-type]
-    assert citation_label({"id": 7, "type": "code"}) == "[C:7]"  # type: ignore[arg-type]
-    assert citation_label({"id": 2, "type": "dataset"}) == "[DS:2]"  # type: ignore[arg-type]
+    assert citation_label("interview", 3) == "[I:3]"
+    assert citation_label("code", 7) == "[C:7]"
+    assert citation_label("dataset", 2) == "[DS:2]"
 
 
 # ─── MCP tools ──────────────────────────────────────────────────────────────

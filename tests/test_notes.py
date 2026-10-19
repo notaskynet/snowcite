@@ -3,9 +3,11 @@
 from pathlib import Path
 
 import pytest
+from sqlalchemy import delete
 
 from snowcite.container import container
 from snowcite.domain.models import Paper
+from snowcite.storage.models import PaperRow
 from snowcite.tools.notes import add_notes, get_notes, link_notes, update_note
 from tests.helpers import add_note, delete_note, get_note_density, set_review_status
 
@@ -103,9 +105,8 @@ async def test_delete_note(tmp_project: Path):
 async def test_delete_paper_cascades_to_notes(tmp_project: Path):
     pid = await _seed_paper()
     await add_note(type="claim", text="x", paper_id=pid)
-    async with container.db.connection() as conn:
-        await conn.execute("DELETE FROM papers WHERE id = ?", (pid,))
-        await conn.commit()
+    async with container.db.session() as session, session.begin():
+        await session.execute(delete(PaperRow).where(PaperRow.id == pid))
     assert await get_notes() == []
 
 

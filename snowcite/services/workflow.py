@@ -1,6 +1,16 @@
-from typing import Any
-
 from snowcite.domain.phases import Step, WorkflowState, decide
+from snowcite.domain.records import ProjectBrief
+from snowcite.domain.results import (
+    DonePayload,
+    EmptyPayload,
+    LowConfidencePayload,
+    NextStepResult,
+    ReviewPayload,
+    SearchPayload,
+    StepPayload,
+    SummaryBrief,
+    SynthesisPayload,
+)
 from snowcite.services.review import ReviewService
 from snowcite.services.sections import SectionService
 from snowcite.services.synthesis import SynthesisService
@@ -32,26 +42,30 @@ class WorkflowService:
         self._section_service = section_service
         self._synthesis = synthesis
 
-    async def next_step(self) -> dict[str, Any]:
-        root = find_project_root()
-        if root is None:
+    async def next_step(self) -> NextStepResult:
+        if find_project_root() is None:
             step = decide(WorkflowState())
-            return _result(step, {}, {"project_active": False})
+            return {
+                "phase": step.phase,
+                "why": step.why,
+                "do": step.do,
+                "payload": EmptyPayload(),
+                "project_active": False,
+            }
 
         step = decide(await self._read_state())
-        payload = await self._payload(step)
-
         progress = await self._review.progress()
-        context = {
+        return {
+            "phase": step.phase,
+            "why": step.why,
+            "do": step.do,
+            "payload": await self._payload(step),
             "project_active": True,
             "counts": progress["counts"],
             "targets": progress["targets"],
             "warnings": progress["warnings"],
             "last_actions": await self._reviews.recent_history(5),
         }
-        return _result(step, payload, context)
-
-    # ─── State ──────────────────────────────────────────────────────────
 
     async def _read_state(self) -> WorkflowState:
         counts = await self._reviews.live_counts()
@@ -69,59 +83,59 @@ class WorkflowService:
             cross_paper_notes=cross_paper,
         )
 
-    # ─── Payloads ───────────────────────────────────────────────────────
-
-    async def _payload(self, step: Step) -> dict[str, Any]:
-        payload: dict[str, Any] = {}
+    async def _payload(self, step: Step) -> StepPayload:
         match step.phase:
             case "search":
-                criteria = await self._reviews.latest_criteria()
-                payload = {"criteria": criteria["criteria_text"] if criteria else None}
+                return await self._search_payload()
             case "review":
-                payload = await self._review_payload(step)
+                return await self._review_payload(step)
             case "low_confidence":
-                payload = {
-                    "papers": await self._review.list_papers(
-                        None, None, None, None, None, None, "auto_low", False, _BATCH_SIZE, 0
-                    )
-                }
+                return LowConfidencePayload(
+                    papers=await self._review.batch(None, "auto_low", _BATCH_SIZE)
+                )
             case "synthesis":
-                payload = {"note_density": await self._notes.density()}
+                return SynthesisPayload(note_density=await self._notes.density())
             case "done":
-                payload = await self._section_service.outline_inputs()
-                payload["gaps"] = await self._synthesis.find_gaps(None)
-                meta = await self._project.load_metadata()
-                keys = ("language", "standard", "discipline", "target_pages", "target_words")
-                payload["project"] = {k: meta[k] for k in keys if k in meta}
-        return payload
+                return await self._done_payload()
+            case _:
+                return EmptyPayload()
 
-    async def _review_payload(self, step: Step) -> dict[str, Any]:
+    async def _search_payload(self) -> SearchPayload:
+        criteria = await self._reviews.latest_criteria()
+        return {"criteria": criteria["criteria_text"] if criteria else None}
+
+    async def _review_payload(self, step: Step) -> ReviewPayload:
         criteria = await self._reviews.latest_criteria()
         summary = await self._reviews.load_summary()
-        payload: dict[str, Any] = {
+        brief: SummaryBrief | None = (
+            {
+                "text": summary["summary"],
+                "topics": [c["topic"] for c in summary["clusters"]],
+                "stale": summary["stale"],
+            }
+            if summary
+            else None
+        )
+        payload: ReviewPayload = {
             "criteria": criteria["criteria_text"] if criteria else None,
-            "summary": (
-                {
-                    "text": summary["summary"],
-                    "topics": [c.get("topic") for c in summary["clusters"]],
-                    "stale": summary["stale"],
-                }
-                if summary
-                else None
-            ),
+            "summary": brief,
         }
         if not step.needs_summary:
-            payload["batch"] = await self._review.list_papers(
-                "unreviewed", None, None, None, None, None, None, False, _BATCH_SIZE, 0
-            )
+            payload["batch"] = await self._review.batch("unreviewed", None, _BATCH_SIZE)
         return payload
 
-
-def _result(step: Step, payload: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "phase": step.phase,
-        "why": step.why,
-        "do": step.do,
-        "payload": payload,
-        **context,
-    }
+    async def _done_payload(self) -> DonePayload:
+        outline = await self._section_service.outline_inputs()
+        metadata = await self._project.load_metadata()
+        project: ProjectBrief = {}
+        if "language" in metadata:
+            project["language"] = metadata["language"]
+        if "standard" in metadata:
+            project["standard"] = metadata["standard"]
+        if "discipline" in metadata:
+            project["discipline"] = metadata["discipline"]
+        if "target_pages" in metadata:
+            project["target_pages"] = metadata["target_pages"]
+        if "target_words" in metadata:
+            project["target_words"] = metadata["target_words"]
+        return {**outline, "gaps": await self._synthesis.find_gaps(None), "project": project}

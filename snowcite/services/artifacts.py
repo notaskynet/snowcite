@@ -6,21 +6,28 @@ from snowcite.domain.artifacts import (
     MAX_ARTIFACT_CHARS,
     citation_label,
 )
-from snowcite.domain.types import ArtifactRecord, ArtifactType
+from snowcite.domain.records import ArtifactRecord, ErrorResult
+from snowcite.domain.results import (
+    ArtifactAdded,
+    ArtifactBrief,
+    ArtifactDeleted,
+    ArtifactIncluded,
+)
+from snowcite.domain.types import ArtifactType
 from snowcite.storage.repositories import ArtifactRepository
 
 
-def brief(record: ArtifactRecord) -> dict[str, Any]:
+def brief(record: ArtifactRecord) -> ArtifactBrief:
     """An artifact without its content body, for listings and bundles."""
     return {
         "id": record["id"],
         "type": record["type"],
         "label": record["label"],
-        "citation_label": citation_label(record),
-        "summary": record.get("summary"),
+        "citation_label": citation_label(record["type"], record["id"], record["label"]),
+        "summary": record["summary"],
         "included": record["included"],
         "chars": len(record["content"]),
-        "metadata": record.get("metadata", {}),
+        "metadata": record["metadata"],
         "created_at": record["created_at"],
     }
 
@@ -36,7 +43,7 @@ class ArtifactService:
         label: str | None,
         summary: str | None,
         metadata: dict[str, Any] | None,
-    ) -> dict[str, Any]:
+    ) -> ArtifactAdded | ErrorResult:
         file = Path(path)
         if not file.exists():
             return {"error": f"file not found: {path}"}
@@ -72,7 +79,7 @@ class ArtifactService:
         content: str,
         summary: str | None,
         metadata: dict[str, Any] | None,
-    ) -> dict[str, Any]:
+    ) -> ArtifactAdded | ErrorResult:
         if len(content) > MAX_ARTIFACT_CHARS:
             return {"error": f"content exceeds {MAX_ARTIFACT_CHARS} chars ({len(content)} given)."}
         return await self._save(type, label, content, None, summary, metadata)
@@ -85,7 +92,7 @@ class ArtifactService:
         source_path: str | None,
         summary: str | None,
         metadata: dict[str, Any] | None,
-    ) -> dict[str, Any]:
+    ) -> ArtifactAdded:
         artifact_id = await self._artifacts.save(
             type, label, content, source_path, summary, metadata
         )
@@ -94,25 +101,26 @@ class ArtifactService:
             "type": type,
             "label": label,
             "chars": len(content),
-            "citation_label": citation_label({"id": artifact_id, "type": type, "label": label}),  # type: ignore[typeddict-item]
+            "citation_label": citation_label(type, artifact_id, label),
         }
 
     async def list_briefs(
         self,
         type: ArtifactType | None,  # noqa: A002
         included_only: bool,
-    ) -> list[dict[str, Any]]:
+    ) -> list[ArtifactBrief]:
         records = await self._artifacts.list(type, included_only)
         return [brief(r) for r in records]
 
-    async def get(self, artifact_id: int) -> dict[str, Any] | None:
-        record = await self._artifacts.load(artifact_id)
-        return dict(record) if record is not None else None
+    async def get(self, artifact_id: int) -> ArtifactRecord | None:
+        return await self._artifacts.load(artifact_id)
 
-    async def delete(self, artifact_id: int) -> dict[str, Any]:
+    async def delete(self, artifact_id: int) -> ArtifactDeleted:
         return {"deleted": await self._artifacts.delete(artifact_id), "id": artifact_id}
 
-    async def set_included(self, artifact_id: int, included: bool) -> dict[str, Any]:
+    async def set_included(
+        self, artifact_id: int, included: bool
+    ) -> ArtifactIncluded | ErrorResult:
         if not await self._artifacts.set_included(artifact_id, included):
-            return {"updated": False, "error": f"artifact {artifact_id} not found"}
+            return {"error": f"artifact {artifact_id} not found"}
         return {"updated": True, "id": artifact_id, "included": included}

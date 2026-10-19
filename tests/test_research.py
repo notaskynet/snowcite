@@ -5,9 +5,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy import func, select
 
 from snowcite.container import container
 from snowcite.domain.models import Paper
+from snowcite.storage.models import PaperSectionLinkRow
 from snowcite.tools.research import research_section
 from snowcite.tools.sections import update_section
 from tests.helpers import (
@@ -49,10 +51,10 @@ async def test_research_section_runs_per_query_and_links(
         ]
     )
 
-    async def fake_search(**kwargs: Any) -> dict[str, Any]:
+    async def fake_search(*args: Any, **kwargs: Any) -> dict[str, Any]:
         return next(responses)
 
-    monkeypatch.setattr(container.search, "search", fake_search)
+    monkeypatch.setattr(container.search, "search_and_save", fake_search)
 
     res = await research_section(section_id=sec["id"])
     assert res["total_new"] == 3
@@ -84,10 +86,10 @@ async def test_research_section_propagates_failed_sources(
 ):
     sec = await create_section(title="X", scope={"keywords": ["k"]})
 
-    async def fake_search(**kwargs: Any) -> dict[str, Any]:
+    async def fake_search(*args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"saved": 0, "duplicates": 0, "new_ids": [], "failed_sources": ["arxiv"]}
 
-    monkeypatch.setattr(container.search, "search", fake_search)
+    monkeypatch.setattr(container.search, "search_and_save", fake_search)
     res = await research_section(section_id=sec["id"])
     assert res["failed_sources"] == ["arxiv"]
 
@@ -131,6 +133,5 @@ async def test_section_delete_cascades_links(tmp_project: Path):
 
     await update_section(section_id=sec["id"], title="Renamed")
     await delete_section(section_id=sec["id"])
-    async with container.db.connection() as conn:
-        cur = await conn.execute("SELECT COUNT(*) FROM paper_section_links")
-        assert (await cur.fetchone())[0] == 0
+    async with container.db.session() as session:
+        assert await session.scalar(select(func.count()).select_from(PaperSectionLinkRow)) == 0

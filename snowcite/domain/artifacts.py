@@ -1,6 +1,6 @@
 import re
 
-from snowcite.domain.types import ArtifactRecord
+from snowcite.domain.types import ArtifactType
 
 
 # 200k characters is roughly a 1-hour interview transcript or a small source
@@ -13,7 +13,7 @@ _FILENAME_LIKE_RE = re.compile(r"^[\w\-.]+$")
 _PREFIXES = {"interview": "I", "code": "C", "document": "D", "note": "N", "dataset": "DS"}
 
 
-def citation_label(artifact: ArtifactRecord) -> str:
+def citation_label(type: ArtifactType, artifact_id: int, label: str | None = None) -> str:  # noqa: A002
     """Short inline citation.
 
     For code artifacts whose label is filename-like (`auth.py`, `utils-v2.ts`),
@@ -23,8 +23,7 @@ def citation_label(artifact: ArtifactRecord) -> str:
 
     The primary-sources appendix expands either form back to the full record.
     """
-    prefix = _PREFIXES[artifact["type"]]
-    label = artifact.get("label")
-    if artifact["type"] == "code" and label and _FILENAME_LIKE_RE.match(label):
+    prefix = _PREFIXES[type]
+    if type == "code" and label and _FILENAME_LIKE_RE.match(label):
         return f"[{prefix}:{label}]"
-    return f"[{prefix}:{artifact['id']}]"
+    return f"[{prefix}:{artifact_id}]"

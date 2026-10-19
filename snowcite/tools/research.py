@@ -1,7 +1,7 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.records import ErrorResult
+from snowcite.domain.results import PaperError, ResearchResult, SectionPapers
 
 
 @mcp.tool()
@@ -10,7 +10,7 @@ async def research_section(
     max_per_query: int = 10,
     year_from: int | None = None,
     year_to: int | None = None,
-) -> dict[str, Any]:
+) -> ResearchResult | ErrorResult:
     """Run scoped searches from a section's scope and link new papers to it.
 
     Builds one query per entry in `scope.keywords` and `scope.questions`,
@@ -30,7 +30,7 @@ async def section_papers(
     link: list[int] | None = None,
     unlink: list[int] | None = None,
     via_query: str | None = None,
-) -> dict[str, Any]:
+) -> SectionPapers:
     """Papers tied to a section; optionally link or unlink some first.
 
     `link` attaches already-saved papers (idempotent; `research_section` only links
@@ -38,14 +38,14 @@ async def section_papers(
     without touching the paper. Returns `{papers, errors?}` where `papers` carries
     review status and the query that surfaced each one, newest first.
     """
-    errors: list[dict[str, Any]] = []
+    errors: list[PaperError] = []
     for paper_id in link or []:
         res = await container.section_service.link_paper(paper_id, section_id, via_query)
         if "error" in res:
             errors.append({"paper_id": paper_id, "error": res["error"]})
     for paper_id in unlink or []:
         await container.section_service.unlink_paper(paper_id, section_id)
-    out: dict[str, Any] = {"papers": await container.section_service.section_papers(section_id)}
+    out: SectionPapers = {"papers": await container.section_service.section_papers(section_id)}
     if errors:
         out["errors"] = errors
     return out

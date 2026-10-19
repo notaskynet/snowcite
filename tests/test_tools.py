@@ -105,7 +105,7 @@ async def test_papers_cluster_filter_uses_review_summary(tmp_project: Path):
     await container.review_service.save_summary("s", [{"topic": "T", "paper_ids": [2], "count": 1}])
     assert [p["id"] for p in await papers(cluster="T")] == [2]
     unknown = await papers(cluster="nope")
-    assert "error" in unknown[0] and unknown[0]["available"] == ["T"]
+    assert "error" in unknown and unknown["available"] == ["T"]
     assert "error" in await paper(99)
 
 

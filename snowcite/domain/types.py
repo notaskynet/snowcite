@@ -1,19 +1,19 @@
-from typing import Any, Literal, TypedDict
+from typing import Literal
 
 
 # ─── Literal aliases ────────────────────────────────────────────────────────
 
-type Status = Literal["approved", "maybe", "rejected", "unreviewed"]
-type Source = Literal["arxiv", "semantic_scholar", "openalex", "crossref", "pubmed"]
-type Direction = Literal["references", "citations"]
+Status = Literal["approved", "maybe", "rejected", "unreviewed"]
+Source = Literal["arxiv", "semantic_scholar", "openalex", "crossref", "pubmed"]
+Direction = Literal["references", "citations"]
 # `auto_high` = Claude confident (direct criterion match); `auto_low` = extrapolation
 # the user should sanity-check; `user` = user decided.
-type ReviewedBy = Literal["auto_high", "auto_low", "user"]
-type Confidence = Literal["high", "low"]
+ReviewedBy = Literal["auto_high", "auto_low", "user"]
+Confidence = Literal["high", "low"]
 STATUSES: tuple[str, ...] = ("approved", "maybe", "rejected", "unreviewed")
 REVIEWED_BY: tuple[str, ...] = ("auto_high", "auto_low", "user")
-type Severity = Literal["ok", "warn", "error"]
-type Phase = Literal[
+Severity = Literal["ok", "warn", "error"]
+Phase = Literal[
     "not_started",
     "criteria",
     "search",
@@ -22,11 +22,11 @@ type Phase = Literal[
     "synthesis",
     "done",
 ]
-type ArtifactType = Literal["interview", "code", "document", "note", "dataset"]
-type SectionStatus = Literal["outline", "drafting", "critiqued", "done"]
+ArtifactType = Literal["interview", "code", "document", "note", "dataset"]
+SectionStatus = Literal["outline", "drafting", "critiqued", "done"]
 # Knowledge-graph note types. Per-paper extraction during review yields the
 # first four; cross-paper synthesis (Phase 2) yields the last four.
-type NoteType = Literal[
+NoteType = Literal[
     "claim",
     "finding",
     "method",
@@ -36,55 +36,9 @@ type NoteType = Literal[
     "consensus",
     "open_question",
 ]
-type NoteLinkKind = Literal["supports", "contradicts", "extends", "derived_from"]
+NoteLinkKind = Literal["supports", "contradicts", "extends", "derived_from"]
 # Per-paper types must carry paper_id; cross-paper types must leave it NULL.
 PER_PAPER_NOTE_TYPES: frozenset[str] = frozenset({"claim", "finding", "method", "limitation"})
 CROSS_PAPER_NOTE_TYPES: frozenset[str] = frozenset(
     {"gap", "contradiction", "consensus", "open_question"}
 )
-
-
-# ─── TypedDicts for DB-shaped data ──────────────────────────────────────────
-
-
-class PaperRecord(TypedDict, total=False):
-    """Paper row + joined review columns, returned by queries after
-    `paper_row_to_dict`. Fields are optional because selectors differ per query."""
-
-    id: int
-    source: Source
-    source_id: str
-    doi: str | None
-    title: str
-    title_normalized: str
-    authors: list[str]
-    year: int | None
-    venue: str | None
-    abstract: str | None
-    pdf_url: str | None
-    bibtex: str | None
-    metadata: dict[str, Any]
-    created_at: str
-    # Joined review columns:
-    review_status: Status
-    review_reason: str | None
-    review_note: str | None
-    reviewed_by: ReviewedBy | None
-    reviewed_at: str | None
-    # Alt key used by papers(reviewed_by="auto_low") where status is aliased without prefix:
-    status: Status
-    reason: str | None
-
-
-class ArtifactRecord(TypedDict, total=False):
-    """A user-supplied research artifact: interview, code, note, document, dataset."""
-
-    id: int
-    type: ArtifactType
-    label: str
-    source_path: str | None
-    content: str
-    summary: str | None
-    metadata: dict[str, Any]
-    included: bool
-    created_at: str

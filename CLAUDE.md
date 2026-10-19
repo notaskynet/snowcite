@@ -30,8 +30,8 @@ snowcite/
 ├── app.py             # FastMCP instance
 ├── container.py       # the one wiring point: Database → repositories → services
 ├── settings.py        # pydantic-settings, env SNOWCITE_*
-├── domain/            # pure: models, types, dedup, citations, bibliography, rules, phases, search policy
-├── storage/           # Database, schema + migrations, projects.py (.snowcite/ resolver), repositories/
+├── domain/            # pure: models, types, records / results / inputs (TypedDicts), rules, phases, dedup, citations, bibliography, search policy
+├── storage/           # Database (SQLAlchemy async), schema.sql (DDL), models.py (ORM rows), migrations.py, projects.py (.snowcite/ resolver), repositories/
 ├── services/          # Review, Note, Section, Synthesis, Search, Citation, Artifact, Project, Workflow
 ├── sources/           # SourceClient / CitationSource ABCs + one class per source, _http.py
 └── tools/             # thin MCP wrappers over services (parse args → call service)
@@ -65,7 +65,9 @@ means updating the matching skill.
 - **No direct `httpx` to source APIs** — use `sources/*`, which rate-limit, retry and cap concurrency.
 - **No Zotero integration**; BibTeX / RIS via `import_refs` is deliberately narrow.
 - **No PDF parsing** — abstracts from the source APIs only.
-- **Don't write SQL in tools or services** — it belongs in a repository.
+- **Don't write queries in tools or services** — they belong in a repository, built with SQLAlchemy `select` / `update` over the ORM rows. `schema.sql` is the DDL source of truth; `tests/test_schema.py` keeps `models.py` in step with it.
+- **No bare `dict[str, Any]` across layers.** Tool and service results, repository records and tool inputs are TypedDicts (`domain/results.py`, `records.py`, `inputs.py`); leaf shapes returned next to `ErrorResult` are `@final` so `"error" in result` narrows. Free-form JSON (metadata, issues) is the exception. `uv run mypy` must stay clean.
+- **No module docstrings.** Tool function docstrings are the model's only documentation — keep them long and actionable.
 - **Don't invent cluster names** — clusters come from the review summary; `find_gaps` flags strays.
 - **Never recommend a decision on a borderline paper** — it biases the user (skill rule; keep it in `review`).
 
@@ -80,10 +82,11 @@ twice in a row: stop, summarise what you tried and why it failed, and ask the us
 uv sync --group dev && uv run python -m snowcite.server    # run from a clone
 uv run pytest                                               # full suite
 uv run ruff check && uv run ruff format                     # lint + format
+uv run mypy                                                 # types
 claude plugin validate .                                    # marketplace + plugins
 ```
 
-CI (`.github/workflows/test.yml`) runs ruff + pytest on push and PR.
+CI (`.github/workflows/test.yml`) runs ruff, mypy and pytest on push and PR.
 
 ## Conventions
 
@@ -96,7 +99,7 @@ CI (`.github/workflows/test.yml`) runs ruff + pytest on push and PR.
 - **Sections**: status `outline | drafting | critiqued | done`; critique stops at zero blockers or two iterations.
 - **Citations** in drafts are `[N]` with the snowcite paper id; `export_bibliography` returns the id → BibTeX key map.
 - **All I/O is async** — aiosqlite, httpx.AsyncClient.
-- **Migrations are additive and gated**: `schema.py` (`CREATE IF NOT EXISTS`, `ALTER TABLE ADD COLUMN`, one-time data moves behind `PRAGMA user_version`).
+- **Schema**: `storage/schema.sql` is idempotent DDL applied on every open; `storage/migrations.py` holds additive changes for older databases (`ALTER TABLE ADD COLUMN`, one-time data moves behind `PRAGMA user_version`).
 - **Commits**: short subject, no `Co-Authored-By`; bump CHANGELOG and `pyproject.toml` version once per release batch.
 
 ## Source details

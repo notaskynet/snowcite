@@ -1,11 +1,10 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.results import NextStepResult
 
 
 @mcp.tool()
-async def next_step() -> dict[str, Any]:
+async def next_step() -> NextStepResult:
     """Where the project is and what to do next. Call this first, and after every batch.
 
     Returns `{phase, why, do, payload, counts, targets, warnings, last_actions}`:

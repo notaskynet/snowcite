@@ -1,7 +1,22 @@
-import json
-from typing import Any
-
 from snowcite.domain import rules
+from snowcite.domain.inputs import CritiqueIssue, ScopeInput, SectionInput
+from snowcite.domain.records import ErrorResult, LinkedPaper, SectionRecord
+from snowcite.domain.results import (
+    CritiqueInputs,
+    CritiqueRecorded,
+    IndexedError,
+    OutlineInputs,
+    QueryResult,
+    ResearchResult,
+    SectionCreated,
+    SectionDeleted,
+    SectionLinked,
+    SectionRevised,
+    SectionsCreated,
+    SectionUnlinked,
+    SectionUpdated,
+)
+from snowcite.domain.types import SectionStatus
 from snowcite.services.artifacts import brief
 from snowcite.services.search import SearchService
 from snowcite.storage.repositories import (
@@ -12,6 +27,7 @@ from snowcite.storage.repositories import (
     ReviewRepository,
     SectionRepository,
 )
+from snowcite.storage.repositories.sections import NewSection, SectionPatch
 
 
 class SectionService:
@@ -36,77 +52,88 @@ class SectionService:
     # ─── Structure ──────────────────────────────────────────────────────
 
     async def create(
-        self, title: str, scope: dict[str, Any] | None, parent_id: int | None, position: int | None
-    ) -> dict[str, Any]:
+        self,
+        title: str,
+        scope: ScopeInput | None,
+        parent_id: int | None,
+        position: int | None,
+    ) -> SectionCreated | ErrorResult:
         if not title.strip():
             return {"error": "title is empty"}
         (new_id,) = await self._sections.create_many(
-            [(title.strip(), rules.normalize_scope(scope), parent_id, position)]
+            [
+                {
+                    "title": title.strip(),
+                    "scope": rules.normalize_scope(scope),
+                    "parent_id": parent_id,
+                    "position": position,
+                }
+            ]
         )
         return {"id": new_id}
 
-    async def bulk_create(self, sections: list[dict[str, Any]]) -> dict[str, Any]:
-        valid: list[tuple[str, dict[str, Any], int | None, int | None]] = []
-        errors: list[dict[str, Any]] = []
+    async def bulk_create(self, sections: list[SectionInput]) -> SectionsCreated:
+        valid: list[NewSection] = []
+        errors: list[IndexedError] = []
         for idx, item in enumerate(sections):
             title = item.get("title", "")
             if not isinstance(title, str) or not title.strip():
                 errors.append({"index": idx, "error": "title is empty"})
                 continue
             valid.append(
-                (
-                    title.strip(),
-                    rules.normalize_scope(item.get("scope")),
-                    item.get("parent_id"),
-                    item.get("position"),
-                )
+                {
+                    "title": title.strip(),
+                    "scope": rules.normalize_scope(item.get("scope")),
+                    "parent_id": item.get("parent_id"),
+                    "position": item.get("position"),
+                }
             )
         ids = await self._sections.create_many(valid)
         return {"inserted": len(ids), "ids": ids, "errors": errors}
 
-    async def list_all(self) -> list[dict[str, Any]]:
+    async def list_all(self) -> list[SectionRecord]:
         return await self._sections.list_all()
 
-    async def get(self, section_id: int) -> dict[str, Any] | None:
+    async def get(self, section_id: int) -> SectionRecord | None:
         return await self._sections.get(section_id)
 
     async def update(
         self,
         section_id: int,
         title: str | None,
-        scope: dict[str, Any] | None,
+        scope: ScopeInput | None,
         draft: str | None,
         status: str | None,
         parent_id: int | None,
         position: int | None,
-    ) -> dict[str, Any]:
+    ) -> SectionUpdated | ErrorResult:
         if all(v is None for v in (title, scope, draft, status, parent_id, position)):
             return {"error": "no fields to update"}
-        fields: dict[str, Any] = {}
+        patch: SectionPatch = {}
         if title is not None:
             if not title.strip():
                 return {"error": "title is empty"}
-            fields["title"] = title.strip()
+            patch["title"] = title.strip()
         if scope is not None:
-            fields["scope_json"] = json.dumps(rules.normalize_scope(scope))
+            patch["scope"] = rules.normalize_scope(scope)
         if draft is not None:
-            fields["draft"] = draft
+            patch["draft"] = draft
         if status is not None:
-            fields["status"] = status
+            patch["status"] = status
         if parent_id is not None:
             if parent_id == section_id:
                 return {"error": "section cannot be its own parent"}
-            fields["parent_id"] = parent_id
+            patch["parent_id"] = parent_id
         if position is not None:
-            fields["position"] = position
-        if not await self._sections.update(section_id, fields):
+            patch["position"] = position
+        if not await self._sections.update(section_id, patch):
             return {"error": f"section {section_id} not found"}
         return {"updated": True, "id": section_id}
 
-    async def delete(self, section_id: int) -> dict[str, Any]:
+    async def delete(self, section_id: int) -> SectionDeleted:
         return {"deleted": await self._sections.delete(section_id)}
 
-    async def outline_inputs(self) -> dict[str, Any]:
+    async def outline_inputs(self) -> OutlineInputs:
         summary = await self._reviews.load_summary()
         criteria = await self._reviews.latest_criteria()
         return {
@@ -117,25 +144,30 @@ class SectionService:
 
     # ─── Critique loop ──────────────────────────────────────────────────
 
-    async def critique_inputs(self, section_id: int) -> dict[str, Any]:
+    async def critique_inputs(self, section_id: int) -> CritiqueInputs | ErrorResult:
         section = await self._sections.get(section_id)
         if section is None:
             return {"error": f"section {section_id} not found"}
-        clusters = [c for c in section["scope"].get("clusters", []) if c]
+        clusters = [c for c in section["scope"]["clusters"] if c]
         linked = await self._sections.linked_papers(section_id, newest_discovery_first=False)
         return {
             "section": {
-                key: section[key] for key in ("id", "title", "scope", "draft", "status", "severity")
-            }
-            | {"critique_iterations": section["critique_iterations"]},
+                "id": section["id"],
+                "title": section["title"],
+                "scope": section["scope"],
+                "draft": section["draft"],
+                "status": section["status"],
+                "severity": section["severity"],
+                "critique_iterations": section["critique_iterations"],
+            },
             "notes": await self._notes.in_clusters(clusters),
             "artifacts": [brief(a) for a in await self._artifacts.list(included_only=True)],
-            "linked_papers": [{k: v for k, v in p.items() if k != "discovered_at"} for p in linked],
+            "linked_papers": [_without_discovery(p) for p in linked],
         }
 
     async def record_critique(
-        self, section_id: int, issues: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+        self, section_id: int, issues: list[CritiqueIssue]
+    ) -> CritiqueRecorded | ErrorResult:
         counts = rules.count_severities(issues)
         if isinstance(counts, str):
             return {"error": counts}
@@ -152,11 +184,13 @@ class SectionService:
                 "nits": counts["nit"],
             },
             "iteration": iteration,
-            "issues": issues,
+            "issues": issues,  # type: ignore[typeddict-item]
         }
 
-    async def revise(self, section_id: int, new_draft: str, mark_done: bool) -> dict[str, Any]:
-        status = "done" if mark_done else "drafting"
+    async def revise(
+        self, section_id: int, new_draft: str, mark_done: bool
+    ) -> SectionRevised | ErrorResult:
+        status: SectionStatus = "done" if mark_done else "drafting"
         if not await self._sections.revise(section_id, new_draft, status):
             return {"error": f"section {section_id} not found"}
         return {"updated": True, "id": section_id, "status": status}
@@ -165,7 +199,7 @@ class SectionService:
 
     async def link_paper(
         self, paper_id: int, section_id: int, via_query: str | None
-    ) -> dict[str, Any]:
+    ) -> SectionLinked | ErrorResult:
         # Validate both ends for a clear error rather than a foreign-key bark.
         if not await self._papers.exists(paper_id):
             return {"error": f"paper {paper_id} not found"}
@@ -176,7 +210,7 @@ class SectionService:
 
     async def research(
         self, section_id: int, max_per_query: int, year_from: int | None, year_to: int | None
-    ) -> dict[str, Any]:
+    ) -> ResearchResult | ErrorResult:
         """One search per scope keyword/question; newly saved papers get linked to the section.
 
         Deliberately no snowball: duplicates are not auto-linked and citation
@@ -186,37 +220,29 @@ class SectionService:
         if section is None:
             return {"error": f"section {section_id} not found"}
         scope = section["scope"]
-        queries = [
-            q for q in (*scope.get("keywords", []), *scope.get("questions", [])) if q.strip()
-        ]
+        queries = [q for q in (*scope["keywords"], *scope["questions"]) if q.strip()]
         if not queries:
             return {"error": "section scope has no keywords or questions to search"}
 
-        per_query: list[dict[str, Any]] = []
+        per_query: list[QueryResult] = []
         failed_sources: set[str] = set()
         for q in queries:
-            res = await self._search.search(
-                query=q,
-                limit=max_per_query,
-                year_from=year_from,
-                year_to=year_to,
-                auto_save=True,
-            )
+            res = await self._search.search_and_save(q, None, max_per_query, year_from, year_to)
             per_query.append(
                 {
                     "query": q,
-                    "saved": res.get("saved", 0),
-                    "duplicates": res.get("duplicates", 0),
-                    "new_ids": res.get("new_ids", []),
+                    "saved": res["saved"],
+                    "duplicates": res["duplicates"],
+                    "new_ids": res["new_ids"],
                 }
             )
-            failed_sources.update(res.get("failed_sources", []) or [])
+            failed_sources.update(res.get("failed_sources", []))
 
         links = [(pid, e["query"]) for e in per_query for pid in e["new_ids"]]
         if links:
             await self._sections.link_papers(section_id, links)
 
-        out: dict[str, Any] = {
+        out: ResearchResult = {
             "section_id": section_id,
             "queries": per_query,
             "total_new": len(links),
@@ -225,8 +251,12 @@ class SectionService:
             out["failed_sources"] = sorted(failed_sources)
         return out
 
-    async def unlink_paper(self, paper_id: int, section_id: int) -> dict[str, Any]:
+    async def unlink_paper(self, paper_id: int, section_id: int) -> SectionUnlinked:
         return {"deleted": await self._sections.unlink_paper(paper_id, section_id)}
 
-    async def section_papers(self, section_id: int) -> list[dict[str, Any]]:
+    async def section_papers(self, section_id: int) -> list[LinkedPaper]:
         return await self._sections.linked_papers(section_id, newest_discovery_first=True)
+
+
+def _without_discovery(paper: LinkedPaper) -> LinkedPaper:
+    return {k: v for k, v in paper.items() if k != "discovered_at"}  # type: ignore[return-value]

@@ -1,15 +1,15 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.records import ProjectMetadata
+from snowcite.domain.results import InitResult
 
 
 @mcp.tool()
 async def init_project(
-    metadata: dict[str, Any] | None = None,
+    metadata: ProjectMetadata | None = None,
     update: bool = False,
     migrate_from_legacy: bool = True,
-) -> dict[str, Any]:
+) -> InitResult:
     """Initialize (or update) the snowcite project in the current working directory.
 
     Creates `.snowcite/` (with `papers.db`, `cache/`) and persists `metadata` into the
@@ -26,7 +26,7 @@ async def init_project(
 
 
 @mcp.tool()
-async def get_project_metadata() -> dict[str, Any]:
+async def get_project_metadata() -> ProjectMetadata:
     """Return the project profile (language, standard, discipline, targets, ...); {} if never set.
 
     Writing skills read `language` and `standard` from here.

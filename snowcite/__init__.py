@@ -1,5 +1,6 @@
 from snowcite.container import Container, container
-from snowcite.domain.models import ApprovedPaper, Paper, PersistResult
+from snowcite.domain.models import Paper
+from snowcite.domain.records import ApprovedPaper, PersistResult
 from snowcite.domain.types import (
     Confidence,
     Direction,

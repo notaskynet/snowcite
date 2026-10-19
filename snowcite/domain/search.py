@@ -1,7 +1,6 @@
-from typing import Any
-
 from snowcite.domain.dedup import find_title_match, normalize_title
 from snowcite.domain.models import Paper
+from snowcite.domain.results import PaperPreview
 from snowcite.domain.types import Source
 
 
@@ -38,11 +37,21 @@ def truncate_abstract(abstract: str | None, max_chars: int) -> str | None:
     return abstract[: max_chars - 1].rstrip() + "…"
 
 
-def compact_paper(p: Paper, abstract_max_chars: int) -> dict[str, Any]:
-    """Paper → dict, respecting the abstract truncation policy."""
-    data = p.model_dump()
-    data["abstract"] = truncate_abstract(p.abstract, abstract_max_chars)
-    return data
+def compact_paper(p: Paper, abstract_max_chars: int) -> PaperPreview:
+    """Paper → preview record, respecting the abstract truncation policy."""
+    return {
+        "source": p.source,
+        "source_id": p.source_id,
+        "doi": p.doi,
+        "title": p.title,
+        "authors": p.authors,
+        "year": p.year,
+        "venue": p.venue,
+        "abstract": truncate_abstract(p.abstract, abstract_max_chars),
+        "pdf_url": p.pdf_url,
+        "bibtex": p.bibtex,
+        "metadata": p.metadata,
+    }
 
 
 def _richness(p: Paper) -> int:

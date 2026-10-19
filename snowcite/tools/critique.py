@@ -1,11 +1,12 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.inputs import CritiqueIssue
+from snowcite.domain.records import ErrorResult
+from snowcite.domain.results import CritiqueInputs, CritiqueRecorded, SectionRevised
 
 
 @mcp.tool()
-async def get_section_critique_inputs(section_id: int) -> dict[str, Any]:
+async def get_section_critique_inputs(section_id: int) -> CritiqueInputs | ErrorResult:
     """Bundle everything needed to critique a section in one call.
 
     Returns `{section, notes, artifacts, linked_papers}`:
@@ -27,8 +28,8 @@ async def get_section_critique_inputs(section_id: int) -> dict[str, Any]:
 @mcp.tool()
 async def record_section_critique(
     section_id: int,
-    issues: list[dict[str, Any]],
-) -> dict[str, Any]:
+    issues: list[CritiqueIssue],
+) -> CritiqueRecorded | ErrorResult:
     """Persist severity aggregates from a critique pass and decide whether to stop.
 
     `issues` items: `{severity: 'blocker'|'should_fix'|'nit', type, text, suggested_action?}`.
@@ -46,7 +47,7 @@ async def revise_section(
     section_id: int,
     new_draft: str,
     mark_done: bool = False,
-) -> dict[str, Any]:
+) -> SectionRevised | ErrorResult:
     """Replace the section draft and reset critique state for a fresh pass.
 
     Resets `blockers`, `should_fix`, `nits`, and `critique_iterations` so the

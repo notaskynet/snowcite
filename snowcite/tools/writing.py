@@ -1,15 +1,15 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
 from snowcite.domain.citations import GAP_CHECK_MIN_WORDS
+from snowcite.domain.records import ErrorResult
+from snowcite.domain.results import GapCheckResult, RewriteResult, ThesisSaved, ThesisView
 
 
 # ─── Thesis (thesis-first workflow entry point) ────────────────────────────
 
 
 @mcp.tool()
-async def thesis(content: str | None = None) -> dict[str, Any] | None:
+async def thesis(content: str | None = None) -> ThesisView | ThesisSaved | ErrorResult | None:
     """Read or set the paper's thesis — 2–5 paragraphs: what it is about, what it contributes.
 
     Without `content` returns `{content, word_count, updated_at}` (None if never set).
@@ -37,7 +37,7 @@ async def thesis(content: str | None = None) -> dict[str, Any] | None:
 async def gap_check(
     min_words: int = GAP_CHECK_MIN_WORDS,
     sections: list[str] | None = None,
-) -> dict[str, Any]:
+) -> GapCheckResult:
     """Find sentences in section drafts that make no citations.
 
     Returns a list per section of substantive sentences (≥ `min_words` words)
@@ -55,7 +55,7 @@ async def gap_check(
 async def rewrite_citations(
     mapping: dict[str, int],
     sections: list[str] | None = None,
-) -> dict[str, Any]:
+) -> RewriteResult | ErrorResult:
     """Bulk-rewrite `[N]` paper-id citations across section drafts.
 
     `mapping` keys are stringified old paper ids (JSON dicts carry string

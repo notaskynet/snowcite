@@ -1,6 +1,5 @@
 """Phase 2: cross-paper synthesis."""
 
-import json
 from pathlib import Path
 
 import pytest
@@ -126,12 +125,9 @@ async def test_find_gaps_unanchored_contradiction(tmp_project: Path):
     await add_note(type="claim", text="a", paper_id=p1, cluster="X")
     await add_note(type="finding", text="b", paper_id=p1, cluster="X")
     await add_note(type="claim", text="c", paper_id=p2, cluster="X")
-    async with container.db.connection() as conn:
-        await conn.execute(
-            "INSERT INTO notes (paper_id, cluster, type, text) "
-            "VALUES (NULL, 'X', 'contradiction', 'A vs B')"
-        )
-        await conn.commit()
+    await container.notes.add_many(
+        [{"paper_id": None, "cluster": "X", "type": "contradiction", "text": "A vs B"}]
+    )
     res = await find_gaps(cluster="X")
     flags = res["findings"][0]["flags"]
     assert "unresolved_contradiction" in flags
@@ -141,13 +137,8 @@ async def test_find_gaps_unanchored_contradiction(tmp_project: Path):
 async def test_find_gaps_unknown_cluster_in_summary(tmp_project: Path):
     p1, _ = await _seed_two_papers()
     await add_note(type="claim", text="x", paper_id=p1, cluster="typo_cluster")
-    async with container.db.connection() as conn:
-        await conn.execute(
-            "INSERT INTO review_summary "
-            "(id, summary, clusters_json, counts_snapshot_json, stale) "
-            "VALUES (1, '', ?, ?, 0)",
-            (json.dumps([{"topic": "real_cluster", "paper_ids": [p1], "count": 1}]), "{}"),
-        )
-        await conn.commit()
+    await container.reviews.save_summary(
+        "", [{"topic": "real_cluster", "paper_ids": [p1], "count": 1}]
+    )
     res = await find_gaps()
     assert "typo_cluster" in res["unknown_clusters_in_summary"]

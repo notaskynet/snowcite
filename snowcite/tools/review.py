@@ -1,12 +1,21 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.inputs import ClusterInput, ReviewDecision
+from snowcite.domain.records import CriteriaRecord, ErrorResult, PrismaCounts, UndoResult
+from snowcite.domain.results import (
+    CriteriaSaved,
+    ReviewBatchResult,
+    SetStatusResult,
+    SummarySaved,
+    SummaryView,
+)
 from snowcite.domain.types import ReviewedBy, Source, Status
 
 
 @mcp.tool()
-async def review_criteria(criteria_text: str | None = None) -> dict[str, Any] | None:
+async def review_criteria(
+    criteria_text: str | None = None,
+) -> CriteriaRecord | CriteriaSaved | None:
     """Read or set the inclusion/exclusion criteria (and user-defined categories).
 
     Without `criteria_text` returns the latest criteria `{id, criteria_text, created_at}`
@@ -19,7 +28,7 @@ async def review_criteria(criteria_text: str | None = None) -> dict[str, Any] | 
 
 
 @mcp.tool()
-async def review_batch(decisions: list[dict[str, Any]]) -> dict[str, Any]:
+async def review_batch(decisions: list[ReviewDecision]) -> ReviewBatchResult:
     """Record a batch of review decisions (PRISMA trail). Marks the summary stale.
 
     Each decision: `{paper_id | paper_ids, status, reason, reviewed_by?, note?, notes?}`
@@ -48,7 +57,7 @@ async def bulk_reclassify(
     year_to: int | None = None,
     reviewed_by: ReviewedBy = "auto_high",
     limit: int | None = None,
-) -> dict[str, Any]:
+) -> SetStatusResult:
     """Reclassify every paper matching the filter. Writes audit entries per paper.
 
     Filter is AND-joined — provide any subset of:
@@ -75,7 +84,7 @@ async def bulk_reclassify(
 
 
 @mcp.tool()
-async def undo_last_review_action() -> dict[str, Any]:
+async def undo_last_review_action() -> UndoResult:
     """Revert the most recent review decision (newest `review_history` entry).
 
     Restores the paper to its `old_status` (typically "unreviewed" if the
@@ -91,8 +100,8 @@ async def undo_last_review_action() -> dict[str, Any]:
 @mcp.tool()
 async def review_summary(
     summary: str | None = None,
-    clusters: list[dict[str, Any]] | None = None,
-) -> dict[str, Any] | None:
+    clusters: list[ClusterInput] | None = None,
+) -> SummaryView | SummarySaved | ErrorResult | None:
     """Read or save the rolling review summary (singleton, <= 500 words).
 
     Without arguments returns `{summary, clusters, counts_snapshot, counts_live, stale,
@@ -108,7 +117,7 @@ async def review_summary(
 
 
 @mcp.tool()
-async def get_prisma_counts() -> dict[str, Any]:
+async def get_prisma_counts() -> PrismaCounts:
     """PRISMA flow numbers from the review trail.
 
     `identified` (papers ever recorded), `screened` (decided, not unreviewed),

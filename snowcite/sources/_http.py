@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
 import httpx
@@ -83,7 +83,7 @@ async def http_get(
     source: str,
     url: str,
     *,
-    params: dict[str, str | int] | None = None,
+    params: Mapping[str, str | int] | None = None,
     headers: dict[str, str] | None = None,
     timeout: float | None = None,
     max_retries: int = 4,

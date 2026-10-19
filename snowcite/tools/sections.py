@@ -1,12 +1,13 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.inputs import ScopeInput, SectionInput
+from snowcite.domain.records import ErrorResult, SectionRecord
+from snowcite.domain.results import SectionDeleted, SectionsCreated, SectionUpdated
 from snowcite.domain.types import SectionStatus
 
 
 @mcp.tool()
-async def create_sections(sections: list[dict[str, Any]]) -> dict[str, Any]:
+async def create_sections(sections: list[SectionInput]) -> SectionsCreated:
     """Create sections from a proposed outline in one call.
 
     Each item: `{title, scope?, parent_id?, position?}`; `scope` is
@@ -21,7 +22,7 @@ async def create_sections(sections: list[dict[str, Any]]) -> dict[str, Any]:
 @mcp.tool()
 async def get_sections(
     section_id: int | None = None,
-) -> list[dict[str, Any]] | dict[str, Any] | None:
+) -> list[SectionRecord] | SectionRecord | None:
     """One section by id (full record, or None) — or, without id, all sections.
 
     Listing is ordered by (parent_id, position) and is hierarchical via `parent_id`.
@@ -35,13 +36,13 @@ async def get_sections(
 async def update_section(
     section_id: int,
     title: str | None = None,
-    scope: dict[str, Any] | None = None,
+    scope: ScopeInput | None = None,
     draft: str | None = None,
     status: SectionStatus | None = None,
     parent_id: int | None = None,
     position: int | None = None,
     delete: bool = False,
-) -> dict[str, Any]:
+) -> SectionUpdated | SectionDeleted | ErrorResult:
     """Patch fields on a section (pass only what changes), or delete it.
 
     `delete=True` removes the section and all its descendants. Severity counters

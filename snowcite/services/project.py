@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import Any
 
+from snowcite.domain.records import ProjectMetadata
+from snowcite.domain.results import InitResult
 from snowcite.storage.database import Database
 from snowcite.storage.projects import create_project_dir, find_project_root, migrate_legacy_db
 from snowcite.storage.repositories import ProjectRepository
@@ -13,10 +14,10 @@ class ProjectService:
 
     async def init(
         self,
-        metadata: dict[str, Any] | None,
+        metadata: ProjectMetadata | None,
         update: bool,
         migrate_from_legacy: bool,
-    ) -> dict[str, Any]:
+    ) -> InitResult:
         """Initialize (or update) the project in the current working directory.
 
         `update=True` keeps everything already stored (criteria, sections, papers)
@@ -45,5 +46,5 @@ class ProjectService:
             "metadata_effective": effective,
         }
 
-    async def metadata(self) -> dict[str, Any]:
+    async def metadata(self) -> ProjectMetadata:
         return await self._project.load_metadata()

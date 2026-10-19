@@ -1,8 +1,28 @@
-from typing import Any
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
-import aiosqlite
+from snowcite.domain.records import (
+    ClusterNote,
+    NewNote,
+    NoteLinkRecord,
+    NoteRecord,
+    NoteScope,
+)
+from snowcite.storage.database import Database, affected
+from snowcite.storage.models import NoteLinkRow, NoteRow, PaperRow
 
-from snowcite.storage.database import Database
+
+def _note_record(row: NoteRow) -> NoteRecord:
+    return {
+        "id": row.id,
+        "paper_id": row.paper_id,
+        "cluster": row.cluster,
+        "type": row.type,
+        "text": row.text,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
 
 
 class NoteRepository:
@@ -11,33 +31,25 @@ class NoteRepository:
 
     @staticmethod
     async def insert(
-        conn: aiosqlite.Connection,
+        session: AsyncSession,
         paper_id: int | None,
         cluster: str | None,
         note_type: str,
         text: str,
     ) -> int:
-        """Insert on a caller's connection so the write can join its transaction."""
-        cur = await conn.execute(
-            "INSERT INTO notes (paper_id, cluster, type, text) VALUES (?, ?, ?, ?)",
-            (paper_id, cluster, note_type, text),
-        )
-        return cur.lastrowid
+        """Insert on a caller's session so the write can join its transaction."""
+        row = NoteRow(paper_id=paper_id, cluster=cluster, type=note_type, text=text)
+        session.add(row)
+        await session.flush()
+        return row.id
 
-    async def add(
-        self, paper_id: int | None, cluster: str | None, note_type: str, text: str
-    ) -> int:
-        async with self._db.connection() as conn:
-            note_id = await self.insert(conn, paper_id, cluster, note_type, text)
-            await conn.commit()
-        return note_id
-
-    async def add_many(self, rows: list[tuple[int | None, str | None, str, str]]) -> list[int]:
-        """Insert `(paper_id, cluster, type, text)` rows in one transaction."""
-        async with self._db.connection() as conn:
-            ids = [await self.insert(conn, *row) for row in rows]
-            await conn.commit()
-        return ids
+    async def add_many(self, notes: list[NewNote]) -> list[int]:
+        """Insert notes in one transaction."""
+        async with self._db.session() as session, session.begin():
+            return [
+                await self.insert(session, n["paper_id"], n["cluster"], n["type"], n["text"])
+                for n in notes
+            ]
 
     async def find(
         self,
@@ -45,32 +57,24 @@ class NoteRepository:
         cluster: str | None = None,
         note_type: str | None = None,
         limit: int = 200,
-    ) -> list[dict[str, Any]]:
-        query = (
-            "SELECT id, paper_id, cluster, type, text, created_at, updated_at FROM notes WHERE 1=1"
-        )
-        params: list[Any] = []
+    ) -> list[NoteRecord]:
+        stmt = select(NoteRow)
         if paper_id is not None:
-            query += " AND paper_id = ?"
-            params.append(paper_id)
+            stmt = stmt.where(NoteRow.paper_id == paper_id)
         if cluster is not None:
-            query += " AND cluster = ?"
-            params.append(cluster)
+            stmt = stmt.where(NoteRow.cluster == cluster)
         if note_type is not None:
-            query += " AND type = ?"
-            params.append(note_type)
-        query += " ORDER BY id DESC LIMIT ?"
-        params.append(limit)
-        async with self._db.connection() as conn:
-            cur = await conn.execute(query, params)
-            return [dict(r) for r in await cur.fetchall()]
+            stmt = stmt.where(NoteRow.type == note_type)
+        stmt = stmt.order_by(NoteRow.id.desc()).limit(limit)
+        async with self._db.session() as session:
+            return [_note_record(r) for r in await session.scalars(stmt)]
 
-    async def get_scope(self, note_id: int) -> dict[str, Any] | None:
-        """`{paper_id, type}` of a note, or None if it doesn't exist."""
-        async with self._db.connection() as conn:
-            cur = await conn.execute("SELECT paper_id, type FROM notes WHERE id = ?", (note_id,))
-            row = await cur.fetchone()
-        return dict(row) if row else None
+    async def get_scope(self, note_id: int) -> NoteScope | None:
+        async with self._db.session() as session:
+            row = await session.get(NoteRow, note_id)
+        if row is None:
+            return None
+        return {"paper_id": row.paper_id, "type": row.type}
 
     async def update(
         self,
@@ -79,161 +83,144 @@ class NoteRepository:
         note_type: str | None = None,
         cluster: str | None = None,
     ) -> None:
-        # `sets` comes from a fixed allowlist — no user input reaches the SQL.
-        sets: list[str] = []
-        params: list[Any] = []
+        values: dict[str, object] = {"updated_at": func.current_timestamp()}
         if text is not None:
-            sets.append("text = ?")
-            params.append(text)
+            values["text"] = text
         if note_type is not None:
-            sets.append("type = ?")
-            params.append(note_type)
+            values["type"] = note_type
         if cluster is not None:
-            sets.append("cluster = ?")
-            params.append(cluster)
-        sets.append("updated_at = CURRENT_TIMESTAMP")
-        params.append(note_id)
-        async with self._db.connection() as conn:
-            await conn.execute(f"UPDATE notes SET {', '.join(sets)} WHERE id = ?", params)  # noqa: S608
-            await conn.commit()
+            values["cluster"] = cluster
+        async with self._db.session() as session, session.begin():
+            await session.execute(update(NoteRow).where(NoteRow.id == note_id).values(**values))
 
     async def delete(self, note_id: int) -> int:
-        async with self._db.connection() as conn:
-            cur = await conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
-            await conn.commit()
-        return cur.rowcount
+        async with self._db.session() as session, session.begin():
+            result = await session.execute(delete(NoteRow).where(NoteRow.id == note_id))
+        return affected(result)
 
     async def link(self, from_note_id: int, to_note_id: int, kind: str) -> None:
-        async with self._db.connection() as conn:
-            await conn.execute(
-                "INSERT OR IGNORE INTO note_links (from_note_id, to_note_id, kind) "
-                "VALUES (?, ?, ?)",
-                (from_note_id, to_note_id, kind),
-            )
-            await conn.commit()
+        stmt = (
+            sqlite_insert(NoteLinkRow)
+            .values(from_note_id=from_note_id, to_note_id=to_note_id, kind=kind)
+            .on_conflict_do_nothing()
+        )
+        async with self._db.session() as session, session.begin():
+            await session.execute(stmt)
 
     async def density(self, cluster: str | None = None) -> dict[str, dict[str, int]]:
         """Note counts per cluster × type."""
-        query = "SELECT COALESCE(cluster, '') AS cluster, type, COUNT(*) AS n FROM notes"
-        params: list[Any] = []
+        name = func.coalesce(NoteRow.cluster, "")
+        stmt = select(name.label("cluster"), NoteRow.type, func.count().label("n"))
         if cluster is not None:
-            query += " WHERE cluster = ?"
-            params.append(cluster)
-        query += " GROUP BY cluster, type ORDER BY cluster, type"
-        async with self._db.connection() as conn:
-            cur = await conn.execute(query, params)
-            rows = await cur.fetchall()
+            stmt = stmt.where(NoteRow.cluster == cluster)
+        stmt = stmt.group_by(NoteRow.cluster, NoteRow.type).order_by(name, NoteRow.type)
+        async with self._db.session() as session:
+            rows = (await session.execute(stmt)).all()
         by_cluster: dict[str, dict[str, int]] = {}
         for r in rows:
-            by_cluster.setdefault(r["cluster"] or "(unscoped)", {})[r["type"]] = r["n"]
+            by_cluster.setdefault(r.cluster or "(unscoped)", {})[r.type] = r.n
         return by_cluster
 
     # ─── Reads and writes used by synthesis and critique ────────────────
 
-    async def in_clusters(self, clusters: list[str]) -> list[dict[str, Any]]:
+    async def in_clusters(self, clusters: list[str]) -> list[NoteRecord]:
         """Notes whose cluster is in `clusters`: per-paper first, then cross-paper."""
         if not clusters:
             return []
-        placeholders = ",".join("?" * len(clusters))
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                f"""
-                SELECT id, paper_id, cluster, type, text
-                FROM notes WHERE cluster IN ({placeholders})
-                ORDER BY paper_id NULLS LAST, id
-                """,  # noqa: S608 — one placeholder per cluster name
-                clusters,
-            )
-            return [dict(r) for r in await cur.fetchall()]
+        stmt = (
+            select(NoteRow)
+            .where(NoteRow.cluster.in_(clusters))
+            .order_by(NoteRow.paper_id.asc().nulls_last(), NoteRow.id)
+        )
+        async with self._db.session() as session:
+            return [_note_record(r) for r in await session.scalars(stmt)]
 
-    async def cluster_view(self, cluster: str) -> tuple[list[Any], list[Any]]:
-        """`(notes joined with paper title/year, links from those notes)` for one cluster."""
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                """
-                SELECT n.id, n.paper_id, n.type, n.text, n.created_at, p.title, p.year
-                FROM notes n LEFT JOIN papers p ON p.id = n.paper_id
-                WHERE n.cluster = ?
-                ORDER BY n.paper_id NULLS LAST, n.id
-                """,
-                (cluster,),
-            )
-            notes = list(await cur.fetchall())
-            cur = await conn.execute(
-                """
-                SELECT from_note_id, to_note_id, kind FROM note_links
-                WHERE from_note_id IN (SELECT id FROM notes WHERE cluster = ?)
-                """,
-                (cluster,),
-            )
-            return notes, list(await cur.fetchall())
+    async def cluster_view(self, cluster: str) -> tuple[list[ClusterNote], list[NoteLinkRecord]]:
+        """Notes of one cluster joined with paper title/year, and the links from those notes."""
+        notes_stmt = (
+            select(NoteRow, PaperRow.title, PaperRow.year)
+            .outerjoin(PaperRow, PaperRow.id == NoteRow.paper_id)
+            .where(NoteRow.cluster == cluster)
+            .order_by(NoteRow.paper_id.asc().nulls_last(), NoteRow.id)
+        )
+        links_stmt = select(NoteLinkRow).where(
+            NoteLinkRow.from_note_id.in_(select(NoteRow.id).where(NoteRow.cluster == cluster))
+        )
+        async with self._db.session() as session:
+            notes_rows = (await session.execute(notes_stmt)).all()
+            link_rows = (await session.scalars(links_stmt)).all()
+        notes: list[ClusterNote] = [
+            {
+                "id": n.id,
+                "paper_id": n.paper_id,
+                "type": n.type,
+                "text": n.text,
+                "title": title,
+                "year": year,
+            }
+            for n, title, year in notes_rows
+        ]
+        links: list[NoteLinkRecord] = [
+            {"from_note_id": r.from_note_id, "to_note_id": r.to_note_id, "kind": r.kind}
+            for r in link_rows
+        ]
+        return notes, links
 
     async def paper_ids_of(self, note_ids: list[int]) -> dict[int, int | None]:
         """`{note_id: paper_id}` for the ids that exist."""
         if not note_ids:
             return {}
-        placeholders = ",".join("?" * len(note_ids))
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                f"SELECT id, paper_id FROM notes WHERE id IN ({placeholders})",  # noqa: S608
-                note_ids,
-            )
-            return {r["id"]: r["paper_id"] for r in await cur.fetchall()}
+        stmt = select(NoteRow.id, NoteRow.paper_id).where(NoteRow.id.in_(note_ids))
+        async with self._db.session() as session:
+            return {r.id: r.paper_id for r in await session.execute(stmt)}
 
     async def add_synthesis(
         self, cluster: str, note_type: str, text: str, source_ids: list[int]
     ) -> int:
         """Insert a cross-paper note and its `derived_from` links atomically."""
-        async with self._db.connection() as conn:
-            new_id = await self.insert(conn, None, cluster, note_type, text)
+        async with self._db.session() as session, session.begin():
+            new_id = await self.insert(session, None, cluster, note_type, text)
             for src in source_ids:
-                await conn.execute(
-                    "INSERT OR IGNORE INTO note_links (from_note_id, to_note_id, kind) "
-                    "VALUES (?, ?, 'derived_from')",
-                    (new_id, src),
+                await session.execute(
+                    sqlite_insert(NoteLinkRow)
+                    .values(from_note_id=new_id, to_note_id=src, kind="derived_from")
+                    .on_conflict_do_nothing()
                 )
-            await conn.commit()
         return new_id
 
     async def ids_by_cluster_and_type(
         self, cluster: str | None
     ) -> tuple[dict[str, dict[str, list[int]]], set[int]]:
         """`({cluster: {type: [note ids]}}, ids of notes anchored by derived_from links)`."""
-        query = "SELECT cluster, type, id FROM notes WHERE cluster IS NOT NULL"
-        params: list[Any] = []
+        stmt = select(NoteRow.cluster, NoteRow.type, NoteRow.id).where(NoteRow.cluster.is_not(None))
         if cluster is not None:
-            query += " AND cluster = ?"
-            params.append(cluster)
-        async with self._db.connection() as conn:
-            cur = await conn.execute(query, params)
-            rows = await cur.fetchall()
-            cur = await conn.execute(
-                "SELECT from_note_id FROM note_links WHERE kind = 'derived_from'"
+            stmt = stmt.where(NoteRow.cluster == cluster)
+        async with self._db.session() as session:
+            rows = (await session.execute(stmt)).all()
+            anchored = set(
+                await session.scalars(
+                    select(NoteLinkRow.from_note_id).where(NoteLinkRow.kind == "derived_from")
+                )
             )
-            anchored = {r["from_note_id"] for r in await cur.fetchall()}
         by_cluster: dict[str, dict[str, list[int]]] = {}
         for r in rows:
-            by_cluster.setdefault(r["cluster"], {}).setdefault(r["type"], []).append(r["id"])
+            by_cluster.setdefault(r.cluster, {}).setdefault(r.type, []).append(r.id)
         return by_cluster, anchored
 
     async def scope_counts(self) -> tuple[int, int]:
         """`(per_paper_notes, cross_paper_notes)` across the whole project."""
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                "SELECT COALESCE(SUM(paper_id IS NOT NULL), 0), "
-                "COALESCE(SUM(paper_id IS NULL), 0) FROM notes"
-            )
-            per, cross = await cur.fetchone()
+        stmt = select(
+            func.count(NoteRow.paper_id),
+            func.count().filter(NoteRow.paper_id.is_(None)),
+        )
+        async with self._db.session() as session:
+            per, cross = (await session.execute(stmt)).one()
         return per, cross
 
     async def paper_ids_with_notes(self, paper_ids: list[int]) -> set[int]:
         """The subset of `paper_ids` that already has at least one per-paper note."""
         if not paper_ids:
             return set()
-        placeholders = ",".join("?" * len(paper_ids))
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                f"SELECT DISTINCT paper_id FROM notes WHERE paper_id IN ({placeholders})",  # noqa: S608
-                paper_ids,
-            )
-            return {r[0] for r in await cur.fetchall()}
+        stmt = select(func.distinct(NoteRow.paper_id)).where(NoteRow.paper_id.in_(paper_ids))
+        async with self._db.session() as session:
+            return set(await session.scalars(stmt))

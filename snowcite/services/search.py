@@ -1,7 +1,8 @@
 import asyncio
-from typing import Any
 
 from snowcite.domain.models import Paper
+from snowcite.domain.records import ErrorResult
+from snowcite.domain.results import PaperError, PaperPreview, SearchPreview, SearchSummary
 from snowcite.domain.search import compact_paper, dedup_within_batch, sources_for_discipline
 from snowcite.domain.types import Direction, Source
 from snowcite.logging import log
@@ -22,6 +23,59 @@ class SearchService:
         self._sources = sources
         self._citations = citations
 
+    async def _gather(
+        self,
+        query: str,
+        sources: list[Source] | None,
+        limit: int,
+        year_from: int | None,
+        year_to: int | None,
+    ) -> tuple[list[Paper], list[str]]:
+        """Query the chosen sources in parallel; returns (merged papers, failed source names)."""
+        chosen = sources or sources_for_discipline(await self._project.discipline())
+        results = await asyncio.gather(
+            *(self._sources[s].search(query, limit, year_from, year_to) for s in chosen),
+            return_exceptions=True,
+        )
+        found: list[Paper] = []
+        failed: list[str] = []
+        for name, res in zip(chosen, results, strict=True):
+            if isinstance(res, BaseException):
+                log.warning("%s search failed: %r", name, res)
+                failed.append(name)
+                continue
+            found.extend(res)
+        return dedup_within_batch(found), failed
+
+    async def search_and_save(
+        self,
+        query: str,
+        sources: list[Source] | None,
+        limit: int,
+        year_from: int | None,
+        year_to: int | None,
+    ) -> SearchSummary:
+        papers, failed = await self._gather(query, sources, limit, year_from, year_to)
+        summary = await self._save(papers)
+        if failed:
+            summary["failed_sources"] = failed
+        return summary
+
+    async def preview(
+        self,
+        query: str,
+        sources: list[Source] | None,
+        limit: int,
+        year_from: int | None,
+        year_to: int | None,
+        abstract_max_chars: int,
+    ) -> SearchPreview:
+        papers, failed = await self._gather(query, sources, limit, year_from, year_to)
+        out = _preview(papers, abstract_max_chars)
+        if failed:
+            out["failed_sources"] = failed
+        return out
+
     async def search(
         self,
         query: str,
@@ -31,28 +85,10 @@ class SearchService:
         year_to: int | None = None,
         auto_save: bool = True,
         abstract_max_chars: int = 0,
-    ) -> dict[str, Any]:
-        chosen = sources or sources_for_discipline(await self._project.discipline())
-        results = await asyncio.gather(
-            *(self._sources[s].search(query, limit, year_from, year_to) for s in chosen),
-            return_exceptions=True,
-        )
-
-        found: list[Paper] = []
-        failed: list[str] = []
-        for name, res in zip(chosen, results, strict=True):
-            if isinstance(res, Exception):
-                log.warning("%s search failed: %r", name, res)
-                failed.append(name)
-                continue
-            found.extend(res)
-
-        result = await self._save_or_preview(
-            dedup_within_batch(found), auto_save, abstract_max_chars
-        )
-        if failed:
-            result["failed_sources"] = failed
-        return result
+    ) -> SearchSummary | SearchPreview:
+        if auto_save:
+            return await self.search_and_save(query, sources, limit, year_from, year_to)
+        return await self.preview(query, sources, limit, year_from, year_to, abstract_max_chars)
 
     async def snowball(
         self,
@@ -61,35 +97,29 @@ class SearchService:
         limit: int,
         auto_save: bool,
         abstract_max_chars: int,
-    ) -> dict[str, Any]:
+    ) -> SearchSummary | SearchPreview:
         """Expand several papers in turn and merge the results; failures are per paper."""
-        totals: dict[str, Any] = {"saved": 0, "duplicates": 0, "new_ids": [], "titles": []}
-        previews: list[dict[str, Any]] = []
-        errors: list[dict[str, Any]] = []
+        errors: list[PaperError] = []
+        related: list[Paper] = []
         for paper_id in paper_ids:
-            res = await self._expand(paper_id, direction, limit, auto_save, abstract_max_chars)
-            if "error" in res:
-                errors.append({"paper_id": paper_id, "error": res["error"]})
-            elif auto_save:
-                totals["saved"] += res["saved"]
-                totals["duplicates"] += res["duplicates"]
-                totals["new_ids"] += res["new_ids"]
-                totals["titles"] += res["titles"]
+            found = await self._related(paper_id, direction, limit)
+            if isinstance(found, dict):
+                errors.append({"paper_id": paper_id, "error": found["error"]})
             else:
-                previews += res["papers"]
-        out = totals if auto_save else {"papers": previews, "count": len(previews)}
+                related += found
+
+        out: SearchSummary | SearchPreview
+        if auto_save:
+            out = await self._save(related)
+        else:
+            out = _preview(related, abstract_max_chars)
         if errors:
             out["errors"] = errors
         return out
 
-    async def _expand(
-        self,
-        paper_id: int,
-        direction: Direction,
-        limit: int,
-        auto_save: bool,
-        abstract_max_chars: int,
-    ) -> dict[str, Any]:
+    async def _related(
+        self, paper_id: int, direction: Direction, limit: int
+    ) -> list[Paper] | ErrorResult:
         """References or citations of one paper, via Semantic Scholar (DOI lookup as fallback)."""
         ref = await self._papers.source_ref(paper_id)
         if ref is None:
@@ -107,21 +137,18 @@ class SearchService:
                     f"Scholar id. No DOI available."
                 )
             }
+        return await self._citations.get_related(ss_id, direction, limit)
 
-        related = await self._citations.get_related(ss_id, direction, limit)
-        return await self._save_or_preview(related, auto_save, abstract_max_chars)
+    async def _save(self, papers: list[Paper]) -> SearchSummary:
+        persisted = await self._papers.persist(papers)
+        return {
+            "saved": persisted["saved"],
+            "duplicates": persisted["duplicates"],
+            "new_ids": persisted["new_ids"],
+            "titles": persisted["new_titles"],
+        }
 
-    async def _save_or_preview(
-        self, papers: list[Paper], auto_save: bool, abstract_max_chars: int
-    ) -> dict[str, Any]:
-        """Persist and return a compact summary, or return a trimmed preview list."""
-        if auto_save:
-            persisted = await self._papers.persist(papers)
-            return {
-                "saved": persisted["saved"],
-                "duplicates": persisted["duplicates"],
-                "new_ids": persisted["new_ids"],
-                "titles": persisted["new_titles"],
-            }
-        out = [compact_paper(p, abstract_max_chars) for p in papers]
-        return {"papers": out, "count": len(out)}
+
+def _preview(papers: list[Paper], abstract_max_chars: int) -> SearchPreview:
+    records: list[PaperPreview] = [compact_paper(p, abstract_max_chars) for p in papers]
+    return {"papers": records, "count": len(records)}

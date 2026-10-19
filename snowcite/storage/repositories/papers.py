@@ -1,12 +1,40 @@
 import json
 from typing import Any
 
-import aiosqlite
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 
 from snowcite.domain.dedup import find_title_match, normalize_title
-from snowcite.domain.models import ApprovedPaper, Paper, PersistResult
+from snowcite.domain.models import Paper
+from snowcite.domain.records import (
+    ApprovedPaper,
+    PaperDetails,
+    PaperRecord,
+    PersistResult,
+    SourceRef,
+)
 from snowcite.storage.database import Database
-from snowcite.storage.rows import paper_row_to_dict
+from snowcite.storage.models import CitationRow, PaperRow, ReviewRow, ReviewSummaryRow
+
+
+def _paper_record(paper: PaperRow, review: ReviewRow | None) -> PaperRecord:
+    return {
+        "id": paper.id,
+        "source": paper.source,
+        "source_id": paper.source_id,
+        "doi": paper.doi,
+        "title": paper.title,
+        "authors": json.loads(paper.authors_json),
+        "year": paper.year,
+        "venue": paper.venue,
+        "pdf_url": paper.pdf_url,
+        "created_at": paper.created_at,
+        "review_status": review.status if review else None,
+        "review_reason": review.reason if review else None,
+        "review_note": review.note if review else None,
+        "reviewed_by": review.reviewed_by if review else None,
+        "reviewed_at": review.reviewed_at if review else None,
+    }
 
 
 class PaperRepository:
@@ -16,130 +44,81 @@ class PaperRepository:
     async def persist(self, papers: list[Paper]) -> PersistResult:
         """Insert papers with DOI uniqueness + fuzzy-title dedup.
 
-        Returns `{saved, duplicates, new_ids, new_titles}`. `new_ids` and
-        `new_titles` are aligned — the i-th title belongs to the i-th id.
+        `new_ids` and `new_titles` are aligned — the i-th title belongs to the i-th id.
         """
+        result: PersistResult = {"saved": 0, "duplicates": 0, "new_ids": [], "new_titles": []}
         if not papers:
-            return {"saved": 0, "duplicates": 0, "new_ids": [], "new_titles": []}
+            return result
 
-        duplicates = 0
-        new_ids: list[int] = []
-        new_titles: list[str] = []
-        async with self._db.connection() as conn:
-            # Fuzzy-title check runs against ALL existing titles, not just no-DOI
-            # ones: a no-DOI paper arriving for a paper already in DB with a DOI
-            # is still a duplicate.
-            cur = await conn.execute("SELECT title_normalized FROM papers")
-            existing_norms = [r[0] for r in await cur.fetchall()]
+        async with self._db.session() as session, session.begin():
+            # The fuzzy-title check runs against ALL existing titles, not just no-DOI
+            # ones: a no-DOI paper arriving for a paper already stored with a DOI is
+            # still a duplicate.
+            existing_norms = list(await session.scalars(select(PaperRow.title_normalized)))
 
             for p in papers:
                 norm = normalize_title(p.title)
                 if not p.doi and find_title_match(norm, existing_norms) is not None:
-                    duplicates += 1
+                    result["duplicates"] += 1
                     continue
+                row = PaperRow(
+                    source=p.source,
+                    source_id=p.source_id,
+                    doi=p.doi,
+                    title=p.title,
+                    title_normalized=norm,
+                    authors_json=json.dumps(p.authors),
+                    year=p.year,
+                    venue=p.venue,
+                    abstract=p.abstract,
+                    pdf_url=p.pdf_url,
+                    bibtex=p.bibtex,
+                    metadata_json=json.dumps(p.metadata),
+                )
                 try:
-                    cur = await conn.execute(
-                        """
-                        INSERT INTO papers
-                            (source, source_id, doi, title, title_normalized,
-                             authors_json, year, venue, abstract, pdf_url,
-                             bibtex, metadata_json)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            p.source,
-                            p.source_id,
-                            p.doi,
-                            p.title,
-                            norm,
-                            json.dumps(p.authors),
-                            p.year,
-                            p.venue,
-                            p.abstract,
-                            p.pdf_url,
-                            p.bibtex,
-                            json.dumps(p.metadata),
-                        ),
-                    )
-                    new_ids.append(cur.lastrowid)
-                    new_titles.append(p.title)
-                    await conn.execute(
-                        "INSERT INTO reviews (paper_id, status) VALUES (?, 'unreviewed')",
-                        (cur.lastrowid,),
-                    )
-                    existing_norms.append(norm)
-                except aiosqlite.IntegrityError:
-                    duplicates += 1
-            if new_ids:
-                await conn.execute("UPDATE review_summary SET stale = 1 WHERE id = 1")
-            await conn.commit()
-        return {
-            "saved": len(new_ids),
-            "duplicates": duplicates,
-            "new_ids": new_ids,
-            "new_titles": new_titles,
-        }
+                    async with session.begin_nested():
+                        session.add(row)
+                        await session.flush()
+                        session.add(ReviewRow(paper_id=row.id, status="unreviewed"))
+                        await session.flush()
+                except IntegrityError:
+                    result["duplicates"] += 1
+                    continue
+                result["new_ids"].append(row.id)
+                result["new_titles"].append(p.title)
+                existing_norms.append(norm)
+
+            if result["new_ids"]:
+                await session.execute(
+                    update(ReviewSummaryRow).where(ReviewSummaryRow.id == 1).values(stale=1)
+                )
+        result["saved"] = len(result["new_ids"])
+        return result
 
     async def load_approved(self) -> list[ApprovedPaper]:
-        """Every approved paper with what bibliography + table rendering need."""
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                """
-                SELECT p.id, p.source, p.title, p.authors_json, p.year, p.venue,
-                       p.doi, p.abstract, p.bibtex
-                FROM papers p JOIN reviews r ON r.paper_id = p.id
-                WHERE r.status = 'approved'
-                ORDER BY p.year, p.id
-                """
-            )
-            rows = await cur.fetchall()
+        """Every approved paper with what bibliography and table rendering need."""
+        stmt = (
+            select(PaperRow)
+            .join(ReviewRow, ReviewRow.paper_id == PaperRow.id)
+            .where(ReviewRow.status == "approved")
+            .order_by(PaperRow.year, PaperRow.id)
+        )
+        async with self._db.session() as session:
+            rows = (await session.scalars(stmt)).all()
         return [
             {
-                "id": r["id"],
-                "source": r["source"],
-                "title": r["title"],
-                "authors": json.loads(r["authors_json"] or "[]"),
-                "year": r["year"],
-                "venue": r["venue"],
-                "doi": r["doi"],
-                "abstract": r["abstract"],
-                "bibtex": r["bibtex"],
+                "id": r.id,
+                "source": r.source,
+                "title": r.title,
+                "authors": json.loads(r.authors_json),
+                "year": r.year,
+                "venue": r.venue,
+                "doi": r.doi,
+                "abstract": r.abstract,
+                "bibtex": r.bibtex,
             }
             for r in rows
         ]
-
-    async def load_by_ids(self, paper_ids: list[int]) -> list[dict[str, Any]]:
-        """A subset of papers by id, with abstracts (for review/regeneration bundles)."""
-        if not paper_ids:
-            return []
-        placeholders = ",".join("?" * len(paper_ids))
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                f"""
-                SELECT id, title, authors_json, year, venue, doi, abstract
-                FROM papers WHERE id IN ({placeholders})
-                ORDER BY year, id
-                """,  # noqa: S608 — placeholder count bound from paper_ids
-                paper_ids,
-            )
-            rows = await cur.fetchall()
-        return [
-            {
-                "id": r["id"],
-                "title": r["title"],
-                "authors": json.loads(r["authors_json"] or "[]"),
-                "year": r["year"],
-                "venue": r["venue"],
-                "doi": r["doi"],
-                "abstract": r["abstract"],
-            }
-            for r in rows
-        ]
-
-    async def exists(self, paper_id: int) -> bool:
-        async with self._db.connection() as conn:
-            cur = await conn.execute("SELECT 1 FROM papers WHERE id = ?", (paper_id,))
-            return await cur.fetchone() is not None
 
     async def find(
         self,
@@ -153,84 +132,83 @@ class PaperRepository:
         include_abstracts: bool = False,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[dict[str, Any]]:
+    ) -> list[PaperRecord]:
         """Saved papers joined with review state, AND-filtered, in id order.
 
-        Compact by default (no abstract / bibtex / metadata) so batches stay cheap
-        in the model's context; `include_abstracts` adds the abstract.
+        Compact by default (no abstract) so batches stay cheap in the model's context.
         """
-        query = """
-            SELECT p.*, r.status AS review_status, r.reason AS review_reason,
-                   r.note AS review_note, r.reviewed_by, r.reviewed_at
-            FROM papers p
-            LEFT JOIN reviews r ON r.paper_id = p.id
-            WHERE 1=1
-        """
-        params: list[Any] = []
+        stmt = select(PaperRow, ReviewRow).outerjoin(ReviewRow, ReviewRow.paper_id == PaperRow.id)
         if status is not None:
-            query += " AND r.status = ?"
-            params.append(status)
+            stmt = stmt.where(ReviewRow.status == status)
         if reviewed_by is not None:
-            query += " AND r.reviewed_by = ?"
-            params.append(reviewed_by)
+            stmt = stmt.where(ReviewRow.reviewed_by == reviewed_by)
         if source is not None:
-            query += " AND p.source = ?"
-            params.append(source)
+            stmt = stmt.where(PaperRow.source == source)
         if year_from is not None:
-            query += " AND p.year >= ?"
-            params.append(year_from)
+            stmt = stmt.where(PaperRow.year >= year_from)
         if year_to is not None:
-            query += " AND p.year <= ?"
-            params.append(year_to)
+            stmt = stmt.where(PaperRow.year <= year_to)
         if search:
-            query += " AND (p.title LIKE ? OR p.abstract LIKE ?)"
-            params.extend([f"%{search}%"] * 2)
+            pattern = f"%{search}%"
+            stmt = stmt.where(PaperRow.title.like(pattern) | PaperRow.abstract.like(pattern))
         if within_ids is not None:
-            query += f" AND p.id IN ({','.join('?' * len(within_ids))})"
-            params.extend(within_ids)
-        query += " ORDER BY p.id LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-        async with self._db.connection() as conn:
-            cur = await conn.execute(query, params)
-            papers = [paper_row_to_dict(r) for r in await cur.fetchall()]
-        for p in papers:
-            p.pop("bibtex", None)
-            p.pop("metadata", None)
-            p.pop("title_normalized", None)
-            if not include_abstracts:
-                p.pop("abstract", None)
-        return papers
+            stmt = stmt.where(PaperRow.id.in_(within_ids))
+        stmt = stmt.order_by(PaperRow.id).limit(limit).offset(offset)
 
-    async def details(self, paper_id: int) -> dict[str, Any] | None:
-        """Full record with review status and stored citation-edge counts."""
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                """
-                SELECT p.*, r.status AS review_status, r.reason AS review_reason,
-                       r.note AS review_note, r.reviewed_by, r.reviewed_at
-                FROM papers p
-                LEFT JOIN reviews r ON r.paper_id = p.id
-                WHERE p.id = ?
-                """,
-                (paper_id,),
-            )
-            row = await cur.fetchone()
-            if row is None:
+        async with self._db.session() as session:
+            rows = (await session.execute(stmt)).all()
+        out: list[PaperRecord] = []
+        for paper, review in rows:
+            record = _paper_record(paper, review)
+            if include_abstracts:
+                record["abstract"] = paper.abstract
+            out.append(record)
+        return out
+
+    async def details(self, paper_id: int) -> PaperDetails | None:
+        """Full record with review state and stored citation-edge counts."""
+        stmt = (
+            select(PaperRow, ReviewRow)
+            .outerjoin(ReviewRow, ReviewRow.paper_id == PaperRow.id)
+            .where(PaperRow.id == paper_id)
+        )
+        async with self._db.session() as session:
+            found = (await session.execute(stmt)).first()
+            if found is None:
                 return None
-            paper = paper_row_to_dict(row)
+            paper, review = found
+            counts = {}
             for direction in ("references", "citations"):
-                cur = await conn.execute(
-                    "SELECT COUNT(*) FROM citations WHERE source_paper_id = ? AND direction = ?",
-                    (paper_id, direction),
+                counts[direction] = await session.scalar(
+                    select(func.count())
+                    .select_from(CitationRow)
+                    .where(
+                        CitationRow.source_paper_id == paper_id,
+                        CitationRow.direction == direction,
+                    )
                 )
-                paper[f"{direction}_count"] = (await cur.fetchone())[0]
-        return paper
+        base = _paper_record(paper, review)
+        metadata: dict[str, Any] = json.loads(paper.metadata_json) if paper.metadata_json else {}
+        return {
+            **base,
+            "abstract": paper.abstract,
+            "bibtex": paper.bibtex,
+            "metadata": metadata,
+            "references_count": counts["references"] or 0,
+            "citations_count": counts["citations"] or 0,
+        }
 
-    async def source_ref(self, paper_id: int) -> dict[str, Any] | None:
+    async def source_ref(self, paper_id: int) -> SourceRef | None:
         """`{source, source_id, doi}` for a paper — enough to look it up elsewhere."""
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                "SELECT source, source_id, doi FROM papers WHERE id = ?", (paper_id,)
-            )
-            row = await cur.fetchone()
-        return dict(row) if row else None
+        stmt = select(PaperRow.source, PaperRow.source_id, PaperRow.doi).where(
+            PaperRow.id == paper_id
+        )
+        async with self._db.session() as session:
+            row = (await session.execute(stmt)).first()
+        if row is None:
+            return None
+        return {"source": row.source, "source_id": row.source_id, "doi": row.doi}
+
+    async def exists(self, paper_id: int) -> bool:
+        async with self._db.session() as session:
+            return await session.get(PaperRow, paper_id) is not None

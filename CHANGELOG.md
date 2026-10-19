@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **SQLAlchemy 2.0 (async) replaces raw SQL.** Queries are `select` / `update` over typed ORM rows (`storage/models.py`); `storage/schema.sql` holds the DDL and is applied on open, with additive migrations in `storage/migrations.py`. `tests/test_schema.py` checks the models against `schema.sql`. New runtime dependency: `sqlalchemy[asyncio]`.
+- **Typed everywhere.** Tool and service results, repository records and tool inputs are TypedDicts (`domain/records.py`, `results.py`, `inputs.py`), so FastMCP publishes output schemas; `mypy` is part of CI. `papers(cluster=...)` with an unknown cluster now returns the error object itself instead of a one-item list. Module docstrings were removed; tool descriptions are unchanged.
 - **Tool surface: 68 → 38.** Related tools merged into entity-oriented ones; behaviour is unchanged unless noted.
   - Review: `review_batch(decisions)` replaces `set_review_status` — one call per batch, valid decisions applied and invalid ones reported by index. **Approved/maybe papers must leave a claim or finding in the knowledge graph** (inline `notes`, or notes recorded earlier); the server rejects the decision otherwise. `review_criteria`, `review_summary` read when called bare and write when given arguments.
   - Reading papers: `papers(status, cluster, reviewed_by, include_abstracts, ...)` replaces `get_saved_papers`, `get_unreviewed_papers`, `get_low_confidence_reviews`, `get_papers_for_writing`; `paper(id)` replaces `get_paper_details`. Records are compact (no abstract/bibtex) unless asked.

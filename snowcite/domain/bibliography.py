@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from snowcite.logging import log
@@ -138,7 +139,9 @@ def generate_bibtex(
 # ─── Cite keys and the document ─────────────────────────────────────────────
 
 
-def assign_cite_keys(entries: list[dict[str, Any]]) -> list[tuple[dict[str, Any], str]]:
+def assign_cite_keys(
+    entries: Sequence[Mapping[str, Any]],
+) -> list[tuple[Mapping[str, Any], str]]:
     """Assign a stable, disambiguated cite key to each entry.
 
     Single source of truth for cite keys: both `build_bibtex_document` /
@@ -160,7 +163,7 @@ def assign_cite_keys(entries: list[dict[str, Any]]) -> list[tuple[dict[str, Any]
             if k:
                 used.add(k)
 
-    assigned: list[tuple[dict[str, Any], str]] = []
+    assigned: list[tuple[Mapping[str, Any], str]] = []
     for e in entries:
         raw = e.get("bibtex")
         if raw:
@@ -181,7 +184,7 @@ def assign_cite_keys(entries: list[dict[str, Any]]) -> list[tuple[dict[str, Any]
     return assigned
 
 
-def build_cite_key_map(entries: list[dict[str, Any]]) -> dict[int, str]:
+def build_cite_key_map(entries: Sequence[Mapping[str, Any]]) -> dict[int, str]:
     """Return `{entry["id"]: cite_key}` for entries that carry an `id` field.
 
     Used by `write_document` to rewrite `[N]`-style paper-id citations into
@@ -190,7 +193,7 @@ def build_cite_key_map(entries: list[dict[str, Any]]) -> dict[int, str]:
     return {e["id"]: k for e, k in assign_cite_keys(entries) if "id" in e}
 
 
-def build_bibtex_document(entries: list[dict[str, Any]]) -> str:
+def build_bibtex_document(entries: Sequence[Mapping[str, Any]]) -> str:
     """Join per-paper BibTeX into a full .bib document.
 
     Each entry dict needs: title, authors, year, venue, doi, source. Entries

@@ -1,5 +1,7 @@
-from typing import Any
+from collections.abc import Sequence
 
+from snowcite.domain.inputs import CritiqueIssue, NoteInput, ReviewDecision, ScopeInput
+from snowcite.domain.records import Counts, ProjectTargets, SectionScope
 from snowcite.domain.types import (
     CROSS_PAPER_NOTE_TYPES,
     PER_PAPER_NOTE_TYPES,
@@ -17,7 +19,7 @@ def validate_note_scope(note_type: str, paper_id: int | None) -> str | None:
     return None
 
 
-def validate_inline_notes(notes: list[dict[str, Any]], paper_count: int) -> str | None:
+def validate_inline_notes(notes: Sequence[NoteInput], paper_count: int) -> str | None:
     """Notes attached to a review decision: one paper, per-paper types, non-empty text."""
     if paper_count != 1:
         return "inline notes require exactly one paper_id; record them per-paper"
@@ -38,7 +40,7 @@ def validate_inline_notes(notes: list[dict[str, Any]], paper_count: int) -> str 
 _EXTRACTION_NOTE_TYPES = frozenset({"claim", "finding"})
 
 
-def validate_decision(decision: dict[str, Any], paper_ids: list[int]) -> str | None:
+def validate_decision(decision: ReviewDecision, paper_ids: list[int]) -> str | None:
     """Shape of one `review_batch` decision (paper ids already extracted by the caller)."""
     if not paper_ids or not all(isinstance(i, int) for i in paper_ids):
         return "paper_id / paper_ids must be a non-empty list of integers"
@@ -56,13 +58,13 @@ def requires_extraction(status: str) -> bool:
     return status in ("approved", "maybe")
 
 
-def validate_extraction(notes: list[dict[str, Any]] | None) -> bool:
+def validate_extraction(notes: Sequence[NoteInput] | None) -> bool:
     """True when `notes` holds at least one claim or finding."""
     return any(n.get("type") in _EXTRACTION_NOTE_TYPES for n in notes or [])
 
 
 def progress_warnings(
-    approved: int, targets: dict[str, Any], words: int, density: float
+    approved: int, targets: ProjectTargets, words: int, density: float
 ) -> list[str]:
     """Warnings for a progress snapshot that falls below its project targets."""
     warnings: list[str] = []
@@ -80,7 +82,7 @@ def progress_warnings(
     return warnings
 
 
-def summary_warnings(stale: bool, snapshot: dict[str, int], live: dict[str, int]) -> list[str]:
+def summary_warnings(stale: bool, snapshot: Counts, live: Counts) -> list[str]:
     """Warnings when the stored review summary has drifted from the live counts."""
     warnings: list[str] = []
     if stale:
@@ -99,21 +101,26 @@ MAX_CRITIQUE_ITERATIONS = 2
 _SEVERITIES = ("blocker", "should_fix", "nit")
 
 
-def normalize_scope(scope: dict[str, Any] | None) -> dict[str, list[str]]:
+def normalize_scope(scope: ScopeInput | None) -> SectionScope:
     """Coerce arbitrary scope payloads into the canonical `{clusters, keywords, questions}`.
 
     Unknown keys are dropped; empty lists are kept (they mean "intentionally empty").
     """
     scope = scope or {}
-    out: dict[str, list[str]] = {"clusters": [], "keywords": [], "questions": []}
-    for key in out:
-        val = scope.get(key, [])
-        if isinstance(val, list):
-            out[key] = [str(v) for v in val if isinstance(v, str | int | float)]
-    return out
+
+    def clean(values: object) -> list[str]:
+        if not isinstance(values, list):
+            return []
+        return [str(v) for v in values if isinstance(v, str | int | float)]
+
+    return {
+        "clusters": clean(scope.get("clusters")),
+        "keywords": clean(scope.get("keywords")),
+        "questions": clean(scope.get("questions")),
+    }
 
 
-def count_severities(issues: list[dict[str, Any]]) -> dict[str, int] | str:
+def count_severities(issues: Sequence[CritiqueIssue]) -> dict[str, int] | str:
     """Per-severity counts of critique issues, or an error message for a bad severity."""
     counts = dict.fromkeys(_SEVERITIES, 0)
     for idx, item in enumerate(issues):
