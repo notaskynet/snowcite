@@ -1,5 +1,3 @@
-"""Review tools — criteria, decisions, summary, PRISMA counts."""
-
 from typing import Any
 
 from snowcite.app import mcp

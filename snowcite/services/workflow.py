@@ -1,10 +1,3 @@
-"""`next_step`: the single entry point that says where the project is and what to do.
-
-Phase and gates come from `domain.phases.decide`; this service reads the
-project, builds the phase payload (so the agent needs no extra reads), and adds
-the numbers every caller wants (counts, targets, warnings, recent actions).
-"""
-
 from typing import Any
 
 from snowcite.domain.phases import Step, WorkflowState, decide

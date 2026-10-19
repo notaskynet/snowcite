@@ -1,5 +1,3 @@
-"""Wiring: one place that builds the database, repositories and services."""
-
 from snowcite.services import (
     ArtifactService,
     CitationService,

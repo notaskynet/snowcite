@@ -1,5 +1,3 @@
-"""Review workflow: criteria, batch decisions, progress, rolling summary."""
-
 from typing import Any
 
 from snowcite.domain import rules

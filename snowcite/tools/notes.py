@@ -1,15 +1,3 @@
-"""Notes / knowledge-graph tools (v0.3).
-
-Notes are short structured statements about papers, written during review and
-synthesised across papers afterwards. They form the working memory the user
-draws on during writing — facts, methods, gaps, contradictions — instead of
-re-reading abstracts. Tool layer enforces the per-paper vs cross-paper split:
-
-- per-paper notes (claim/finding/method/limitation) require `paper_id`;
-- cross-paper notes (gap/contradiction/consensus/open_question) reject it
-  and instead reference other notes via `note_links` (Phase 2).
-"""
-
 from typing import Any
 
 from snowcite.app import mcp

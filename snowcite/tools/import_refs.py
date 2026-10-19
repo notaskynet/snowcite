@@ -1,15 +1,3 @@
-"""Import references from BibTeX and RIS files.
-
-We parse a deliberately-narrow subset of both formats (enough for reference
-manager exports from Mendeley, EndNote, Zotero-via-BibTeX, etc.) and route
-the resulting papers through `PaperRepository.persist` — same
-DB write path as `search_papers`.
-
-Papers missing an abstract get best-effort enrichment via OpenAlex / Semantic
-Scholar lookups by DOI — `papers(status="unreviewed")` assumes an abstract for
-borderline decisions, so we try to fill it in before review starts.
-"""
-
 import re
 from pathlib import Path
 from typing import Any

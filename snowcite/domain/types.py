@@ -1,9 +1,3 @@
-"""Shared typed vocabulary — literals + TypedDicts used across the codebase.
-
-Kept backend/free of runtime code so any module can import from here without
-creating cycles.
-"""
-
 from typing import Any, Literal, TypedDict
 
 

@@ -1,5 +1,3 @@
-"""Semantic Scholar Graph API client."""
-
 from typing import Any
 
 from pydantic import ValidationError

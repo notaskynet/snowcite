@@ -1,5 +1,3 @@
-"""DOI + fuzzy-title deduplication."""
-
 import re
 import unicodedata
 

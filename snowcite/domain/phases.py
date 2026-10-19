@@ -1,5 +1,3 @@
-"""Workflow phases: where a project is and what the next step must be. Pure."""
-
 from dataclasses import dataclass, field
 
 from snowcite.domain.types import Phase

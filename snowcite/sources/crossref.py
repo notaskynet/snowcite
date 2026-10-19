@@ -1,9 +1,3 @@
-"""Crossref Works API client — universal scholarly metadata, keyed by DOI.
-
-Docs: https://api.crossref.org. Polite pool via `mailto=` query param, same
-convention as OpenAlex. Honors Retry-After on 429 via sources/_http.
-"""
-
 from typing import Any
 
 from pydantic import ValidationError

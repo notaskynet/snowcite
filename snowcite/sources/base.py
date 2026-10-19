@@ -1,5 +1,3 @@
-"""Source client interfaces."""
-
 from abc import ABC, abstractmethod
 
 from snowcite.domain.models import Paper

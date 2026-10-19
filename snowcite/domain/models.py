@@ -1,5 +1,3 @@
-"""Domain models shared across layers. No I/O."""
-
 from typing import TypedDict
 
 from pydantic import BaseModel, Field, field_validator

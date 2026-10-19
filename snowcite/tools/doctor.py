@@ -1,11 +1,3 @@
-"""Doctor — diagnose the local environment.
-
-Checks external binaries (uv), reachability of the
-scholarly APIs snowcite talks to, and relevant env vars. Returns a structured
-report so Claude can see "what's broken" without running a bunch of Bash
-probes by hand.
-"""
-
 import asyncio
 import os
 import shutil

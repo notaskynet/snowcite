@@ -1,5 +1,3 @@
-"""arXiv client. The `arxiv` lib is sync; we run it in a worker thread."""
-
 import asyncio
 
 import arxiv

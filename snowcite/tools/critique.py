@@ -1,23 +1,3 @@
-"""Critique / revise loop (Phase 5 of v0.3).
-
-The third leg of the writing flow: draft → critique → revise. `critique_section`
-gives Claude everything it needs to read a section like a strict academic
-reviewer (the draft, the notes the section's claims should rest on, the linked
-papers); Claude returns a list of severity-tagged issues; `record_section_critique`
-persists the severity counts and updates iteration state. `revise_section`
-replaces the draft with the rewrite and resets the counters so the next critique
-sees a fresh draft.
-
-Issues themselves are transient — they're produced fresh each iteration, so
-storing them buys nothing. Only the *aggregate* (blockers / should_fix / nits)
-and iteration count live on the section row, because they drive the stop
-criterion.
-
-Stop criterion: critique stops when blockers=0 OR critique_iterations >= 2.
-The user can always override by calling `revise_section` again or
-`update_section(status='done')` regardless of what the counters say.
-"""
-
 from typing import Any
 
 from snowcite.app import mcp

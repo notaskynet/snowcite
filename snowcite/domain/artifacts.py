@@ -1,5 +1,3 @@
-"""Research artifacts: citation labels and size limits. Pure."""
-
 import re
 
 from snowcite.domain.types import ArtifactRecord

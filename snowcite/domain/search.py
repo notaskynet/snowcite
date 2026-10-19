@@ -1,5 +1,3 @@
-"""Search policy: which sources to query, how to merge their results. Pure."""
-
 from typing import Any
 
 from snowcite.domain.dedup import find_title_match, normalize_title

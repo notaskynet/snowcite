@@ -1,8 +1,3 @@
-"""snowcite — MCP server for systematic literature review.
-
-See TODO.md for the roadmap and CLAUDE.md for the review workflow.
-"""
-
 import asyncio
 import atexit
 import logging

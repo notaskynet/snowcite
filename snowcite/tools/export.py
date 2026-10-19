@@ -1,5 +1,3 @@
-"""Export the approved bibliography as BibTeX or RIS."""
-
 from pathlib import Path
 from typing import Any, Literal
 

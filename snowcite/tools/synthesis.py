@@ -1,17 +1,3 @@
-"""Cross-paper synthesis tools (Phase 2 of v0.3).
-
-Per-paper notes (Phase 1) are local: each one says something about a single
-paper. Synthesis is the second pass — Claude reads the per-paper notes for a
-cluster as a corpus and writes cross-paper notes (`gap`, `contradiction`,
-`consensus`, `open_question`) that name patterns the user can't see by reading
-papers one at a time. Cross-paper notes must point back at the per-paper notes
-that produced them via `derived_from` links — otherwise they're untraceable.
-
-`find_gaps` is a heuristic surfacer for clusters where synthesis is missing
-or thin. It doesn't prescribe what to add — it just flags the spots that look
-under-synthesised.
-"""
-
 from typing import Any
 
 from snowcite.app import mcp

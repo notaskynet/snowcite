@@ -1,10 +1,3 @@
-"""snowcite — MCP server + library for systematic literature review.
-
-Re-exports the stable, library-usable surface. The MCP tool surface is
-registered via `server.py` / `snowcite.app`; consumers integrating as a
-library work against the container (repositories) and source layers.
-"""
-
 from snowcite.container import Container, container
 from snowcite.domain.models import ApprovedPaper, Paper, PersistResult
 from snowcite.domain.types import (

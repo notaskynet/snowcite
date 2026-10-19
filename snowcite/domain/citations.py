@@ -1,5 +1,3 @@
-"""Numeric `[N]` citation refs as they appear in stored section text."""
-
 import re
 
 

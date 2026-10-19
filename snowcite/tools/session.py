@@ -1,5 +1,3 @@
-"""`next_step` — the entry point for every session, including recovery after `/clear`."""
-
 from typing import Any
 
 from snowcite.app import mcp

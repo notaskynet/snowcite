@@ -1,9 +1,3 @@
-"""Writing helpers: thesis and citation checks.
-
-Structure and drafts live in sections (`tools/sections.py`, `tools/critique.py`);
-this module holds the pieces around them.
-"""
-
 from typing import Any
 
 from snowcite.app import mcp

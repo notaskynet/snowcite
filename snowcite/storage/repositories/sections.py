@@ -1,5 +1,3 @@
-"""Section reads shared by document building and metrics."""
-
 import json
 from typing import Any
 

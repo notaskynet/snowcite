@@ -1,5 +1,3 @@
-"""Project-level settings stored in the `project_metadata` singleton."""
-
 import json
 from typing import Any
 

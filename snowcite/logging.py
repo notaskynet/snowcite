@@ -1,9 +1,3 @@
-"""Snowcite's single logger.
-
-All modules use `from snowcite.logging import log`. Callers embedding snowcite
-as a library can silence or re-route via `logging.getLogger("snowcite")`.
-"""
-
 import logging
 
 

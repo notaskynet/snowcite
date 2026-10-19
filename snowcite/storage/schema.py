@@ -1,5 +1,3 @@
-"""SQLite schema and additive migrations for a project's `papers.db`."""
-
 import json
 
 import aiosqlite

@@ -1,9 +1,3 @@
-"""Project initialization — creates `.snowcite/` and persists project metadata.
-
-Claude collects the metadata with the user (AskUserQuestion — MCP tools can't prompt
-users themselves), then calls `init_project(metadata=...)`.
-"""
-
 from typing import Any
 
 from snowcite.app import mcp

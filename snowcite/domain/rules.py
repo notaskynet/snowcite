@@ -1,10 +1,3 @@
-"""Workflow invariants as pure functions.
-
-Each validator returns an error message (or None) so callers decide how to
-surface it. Keeping them here — instead of in tool docstrings — means the rule
-is enforced, not just documented.
-"""
-
 from typing import Any
 
 from snowcite.domain.types import (
