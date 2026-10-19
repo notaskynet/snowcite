@@ -1,12 +1,3 @@
-"""HTTP helper with retry/backoff and per-source concurrency limits.
-
-Uses a module-level `httpx.AsyncClient` with connection pooling — a fresh
-client per request would pay TCP+TLS cost on every call, which is visible on
-large snowball runs.
-
-Respects Retry-After on 429, exponential backoff on 5xx and transport errors.
-"""
-
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager

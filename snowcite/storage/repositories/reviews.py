@@ -1,5 +1,3 @@
-"""Review criteria, statuses, history and the rolling summary."""
-
 import json
 from typing import Any
 

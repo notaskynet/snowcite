@@ -1,5 +1,3 @@
-"""MCP tools for managing research artifacts (interviews, code, notes, etc.)."""
-
 from typing import Any
 
 from snowcite.app import mcp

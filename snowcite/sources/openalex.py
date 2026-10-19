@@ -1,5 +1,3 @@
-"""OpenAlex client. Abstracts come as inverted index — we reconstruct plaintext."""
-
 from typing import Any
 
 from pydantic import ValidationError

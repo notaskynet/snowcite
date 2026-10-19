@@ -1,5 +1,3 @@
-"""Knowledge-graph notes: validation lives here, SQL in `NoteRepository`."""
-
 from typing import Any
 
 from snowcite.domain import rules

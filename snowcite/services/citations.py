@@ -1,5 +1,3 @@
-"""Checks and bulk edits over `[N]` citations in section drafts."""
-
 from typing import Any
 
 from snowcite.domain.citations import GAP_CHECK_MIN_WORDS, rewrite_cite_ids, uncited_sentences

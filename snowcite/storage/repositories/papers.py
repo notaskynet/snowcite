@@ -1,5 +1,3 @@
-"""Paper reads and the single write path (insert + dedup)."""
-
 import json
 from typing import Any
 

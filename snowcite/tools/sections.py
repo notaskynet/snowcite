@@ -1,15 +1,3 @@
-"""Section-as-entity tools (Phase 3 of v0.3).
-
-A section row owns its own scope, draft, status, and severity counters. The
-critique/revise loop in Phase 5 reads and writes these fields per section,
-which is why titles + scope live in the DB (not just in a singleton outline
-JSON like the v0.2 path).
-
-`scope` is a structured dict — `{clusters, keywords, questions}` — so that
-`research_section` (Phase 4) can build search queries from it without parsing
-free-form text.
-"""
-
 from typing import Any
 
 from snowcite.app import mcp

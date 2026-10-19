@@ -1,5 +1,3 @@
-"""Knowledge-graph notes and typed links between them."""
-
 from typing import Any
 
 import aiosqlite

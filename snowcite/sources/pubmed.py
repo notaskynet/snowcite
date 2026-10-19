@@ -1,12 +1,3 @@
-"""PubMed client via NCBI E-utilities.
-
-E-utilities flow: `esearch` returns PMIDs matching a query, `esummary` fetches
-metadata for those PMIDs. Two round-trips per search; both sit behind the shared
-retry/backoff helper so rate limiting is consistent with the other sources.
-
-Docs: https://www.ncbi.nlm.nih.gov/books/NBK25500/
-"""
-
 from typing import Any
 
 from pydantic import ValidationError

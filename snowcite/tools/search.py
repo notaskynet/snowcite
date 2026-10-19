@@ -1,5 +1,3 @@
-"""Search, snowball and read tools for the paper corpus."""
-
 from typing import Any
 
 from snowcite.app import mcp

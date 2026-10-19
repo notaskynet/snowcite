@@ -1,5 +1,3 @@
-"""Ingest and browse research artifacts."""
-
 from pathlib import Path
 from typing import Any
 

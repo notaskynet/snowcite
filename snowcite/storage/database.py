@@ -1,10 +1,3 @@
-"""Database access for the active project.
-
-`Database` resolves the project's `papers.db` on every call (through the
-injected `path_provider`), so switching projects is just a `cd` and tests can
-point it at a tmp dir. Schema is applied lazily, once per path per instance.
-"""
-
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager

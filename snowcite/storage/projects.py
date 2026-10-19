@@ -1,11 +1,3 @@
-"""Project resolver: locate `.snowcite/` by walking up from cwd.
-
-Each snowcite project lives in its own directory, identified by a `.snowcite/`
-subdirectory (analogous to `.git/`). Tools resolve the project at every call via
-`require_project_root()`, so switching projects is just `cd` — there is no global
-`current_project` state.
-"""
-
 import os
 import shutil
 from pathlib import Path

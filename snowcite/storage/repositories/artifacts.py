@@ -1,5 +1,3 @@
-"""Research artifacts: interviews, code, notes, documents, datasets."""
-
 import json
 from typing import Any
 

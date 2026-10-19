@@ -1,5 +1,3 @@
-"""Search across sources, snowball through citations, read saved papers."""
-
 import asyncio
 from typing import Any
 

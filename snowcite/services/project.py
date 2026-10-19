@@ -1,5 +1,3 @@
-"""Project lifecycle: scaffold `.snowcite/` and store project metadata."""
-
 from pathlib import Path
 from typing import Any
 

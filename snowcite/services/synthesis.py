@@ -1,5 +1,3 @@
-"""Cross-paper synthesis over per-paper notes."""
-
 from typing import Any
 
 from snowcite.domain import rules

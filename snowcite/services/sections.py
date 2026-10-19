@@ -1,5 +1,3 @@
-"""Sections as entities: structure, critique loop, paper links."""
-
 import json
 from typing import Any
 

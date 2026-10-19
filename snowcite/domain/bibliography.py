@@ -1,5 +1,3 @@
-"""BibTeX generation and cite keys for approved papers. Pure."""
-
 import re
 import unicodedata
 from typing import Any

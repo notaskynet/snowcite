@@ -1,18 +1,3 @@
-"""Section-scoped research (Phase 4 of v0.3).
-
-Drives `search_papers` from a section's `scope` so the user can fill gaps in
-one section without manually composing queries. Newly persisted papers get
-linked to the section via `paper_section_links` for traceability — the user
-can later see "this paper entered the corpus while researching the methods
-section". Existing papers (duplicates) are not auto-linked: rediscovery isn't
-the same as discovery, and the user may link them manually if they consider
-the paper relevant.
-
-Snowball is expensive — this tool deliberately does not call
-`snowball` automatically. The user runs it explicitly once they've
-seen what `research_section` brought in.
-"""
-
 from typing import Any
 
 from snowcite.app import mcp
