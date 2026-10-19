@@ -1,0 +1,26 @@
+{
+  "name": "snowcite",
+  "displayName": "snowcite",
+  "version": "0.4.0",
+  "description": "Systematic literature review: search, snowball, review and synthesis tools with the skills that drive them.",
+  "author": { "name": "cop1cat" },
+  "homepage": "https://cop1cat.github.io/snowcite/",
+  "repository": "https://github.com/cop1cat/snowcite",
+  "license": "MIT",
+  "keywords": ["literature-review", "systematic-review", "snowballing", "mcp"],
+  "userConfig": {
+    "semantic_scholar_api_key": {
+      "type": "string",
+      "title": "Semantic Scholar API key",
+      "description": "Optional. Raises Semantic Scholar rate limits from 100 requests per 5 minutes to 100 per second.",
+      "sensitive": true,
+      "default": ""
+    },
+    "openalex_email": {
+      "type": "string",
+      "title": "Contact email for OpenAlex / Crossref",
+      "description": "Optional. Puts requests in the polite pool of OpenAlex and Crossref.",
+      "default": ""
+    }
+  }
+}

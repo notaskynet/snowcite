@@ -2,118 +2,46 @@
 
 ## "No snowcite project found"
 
-The resolver walks up from your current working directory looking for a
-`.snowcite/` subdir. If none is found anywhere in the parent chain, you get:
-
-```
-NoProjectError: No snowcite project found in the current directory or any parent.
-Run `init_project()` here first to create a .snowcite/ directory.
-```
-
-Fix: `cd` to the directory that *should* hold this project, then ask Claude
-to run `init_project`.
-
-Alternative: `export SNOWCITE_PROJECT_ROOT=/path/to/project` to override the
-resolver — useful when running the server from an unrelated directory.
-
-## LaTeX compile fails on Cyrillic
-
-Symptom: errors like `Missing character: There is no Ж in font ec-lmr12!` or
-`Package inputenc Error: Unicode character Ы not set up`.
-
-Cause: you're using an 8-bit fontenc (T1 or T2A) with tectonic's XeTeX,
-which expects Unicode fonts via fontspec.
-
-Fix: use the snowcite-generated templates. They already do:
-
-```latex
-\usepackage{fontspec}
-\usepackage[russian,english]{babel}
-\babelfont{rm}[Ligatures=TeX]{CMU Serif}
-```
-
-If you edited `review.tex` manually, regenerate via `write_document(...)` or
-copy the preamble from `snowcite/templates/latex/plain.tex.j2`.
-
-## LaTeX compile: "biber not found"
-
-Tectonic ships `bibtex` but not `biber`. If your `\usepackage{biblatex}` call
-has `backend=biber`, switch it to `backend=bibtex`. Our templates already do.
-
-## Typst compile: `modern-g7-32` errors
-
-The ГОСТ typst package pins a specific version. If typst complains about
-missing functions or breaking changes, check `snowcite/templates/typst/gost.typ.j2`
-and bump the `@preview/modern-g7-32:X.Y.Z` version tag. Run the tests locally
-to make sure substitution still works before committing.
+The resolver walks up from the working directory looking for `.snowcite/`. Without one you get `NoProjectError`. `cd` to the directory that should hold the project and run `init_project`. To run the server from elsewhere set `SNOWCITE_PROJECT_ROOT=/path/to/project`.
 
 ## Safety refusals on sensitive topics
 
-snowcite is designed for academic reviews, including dual-use areas like AI
-safety, cybersecurity, biosecurity. But the Claude safety classifier operates
-on *context density* — a chat window full of abstracts containing operational
-detail can trigger refusals even when your intent is scholarly.
+snowcite is built for academic reviews, including dual-use areas (AI safety, security, biosecurity). The classifier reacts to *context density*: a chat full of abstracts with operational detail can trigger a refusal even when your intent is scholarly.
 
-Mitigations already in place:
-
-- `get_unreviewed_papers(include_abstracts=False)` — default, keeps abstracts out of context
-- CLAUDE.md explicitly frames the project as a peer-reviewed literature review
-- `academic-reviewer` subagent paraphrases rather than quoting verbatim
+Already in place: tools return compact records without abstracts; the `review` skill tells Claude to paraphrase abstracts in one or two neutral sentences and never paste operational detail.
 
 If you still hit a refusal:
 
-1. `/clear` to reset context — accumulated density is often the culprit
-2. Be explicit: "This is a systematic review for my thesis. I need [X] at an
-   academic level of detail, not operational."
-3. Split into smaller sub-topics so any one session touches less material.
+1. `/clear` — accumulated density is often the cause; `next_step()` restores your place.
+2. Say what it is: "systematic review for my thesis, academic level, not operational".
+3. Split the topic into smaller sub-areas.
 
-For genuinely borderline material (detailed attack recipes, weaponization
-details), Claude may still refuse — that's the correct behavior. Keep the
-review at the level of "here's what this paper claims and why it matters",
-not "here's how to reproduce their attack".
+For genuinely operational material Claude may still refuse — correctly. Keep the review at "what this paper claims and why it matters".
 
-## Rate-limited on Semantic Scholar
+## Rate limits on Semantic Scholar
 
-Unauthenticated: 100 req / 5 min. Our retry helper honors `Retry-After` and
-backs off exponentially, but on a big snowball you might see warnings like:
+Without a key: 100 requests / 5 minutes. The client honours `Retry-After` and backs off; during a big snowball you may see `HTTP 429, waiting 30s`. Searches continue on the other sources. A key (`SNOWCITE_SEMANTIC_SCHOLAR_API_KEY`, or the plugin setting) lifts the limit to 100 requests / second.
 
-```
-warning: semantic_scholar: HTTP 429, waiting 30s (attempt 3/5)
-```
+## `next_step` keeps asking for the summary
 
-These are fine — the search continues in parallel on other sources. Fix
-permanently by requesting an API key and setting
-`SNOWCITE_SEMANTIC_SCHOLAR_API_KEY`, which unlocks 100 req / sec.
+After every batch (and after a snowball or import) the summary is stale. Save it with `review_summary(summary, clusters)` and the next batch is released. This is deliberate.
 
-## The Claude session lost context
+## `review_batch` rejects an approval
 
-Normal after `/clear` or a new session. Fix: the first tool Claude should call
-is `next_step()`. It returns current phase, next-action hint, last
-review actions, section counts. Claude picks up exactly where it left off.
-
-## PDF output missing Russian characters
-
-See [LaTeX compile fails on Cyrillic](#latex-compile-fails-on-cyrillic).
-For Typst, make sure `set text(lang: "ru")` is in your document — snowcite
-templates do this automatically based on `project_metadata.language`.
-
-## I edited `CLAUDE.md` and it got overwritten
-
-Yes — `CLAUDE.md` is snowcite-managed. Every `init_project` call (including
-`update=True`) regenerates it from the template. Put project-specific notes
-into a separate file, e.g. `NOTES.md`, and reference it from `CLAUDE.md` via
-`@NOTES.md` if you want Claude to read it automatically.
+Approved and maybe papers must leave a `claim` or `finding` note, inline (`notes=[{type, text, cluster}]`, one paper per decision) or already in the graph. Rejections take no notes.
 
 ## The review history looks wrong
 
-`set_review_status` appends to `review_history` on every change. You can
-inspect via:
+Every decision appends to `review_history`. Inspect it read-only:
 
 ```sql
-sqlite3 .snowcite/papers.db \
+sqlite3 -readonly .snowcite/papers.db \
   "SELECT paper_id, old_status, new_status, reason, reviewed_by, changed_at
    FROM review_history ORDER BY id DESC LIMIT 20;"
 ```
 
-But don't `UPDATE` or `DELETE` from this table directly — it's the audit trail
-the PRISMA flow diagram depends on.
+Don't edit the table — the PRISMA numbers depend on it. Use `undo_last_review_action` or `bulk_reclassify`.
+
+## I upgraded from 0.3
+
+The v0.2 writing tables (`outline`, `section_content`) are folded into `sections` automatically on first open; the old tables stay in the file unread. `write_document`, `compile_pdf` and the other document tools are gone — build the document in your own toolchain. See the changelog for the tool renames.

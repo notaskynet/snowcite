@@ -1,208 +1,116 @@
 # CLAUDE.md
 
-Guide for Claude Code sessions in the snowcite repo.
+Guide for Claude Code sessions in the snowcite repo. (The workflow *users* follow lives in
+the plugin skills under `plugins/`, not here.)
 
 ## What this is
 
-`snowcite` is an MCP server for systematic literature review. Search across arXiv / Semantic Scholar / OpenAlex, snowball through citations, review papers through chat (not UI), keep a notes graph and cross-paper synthesis. Writing the document is the model's job (skills); snowcite builds no PDF.
+`snowcite` is an MCP server for systematic literature review plus two Claude Code plugins
+that carry the skills. The server searches arXiv / Semantic Scholar / OpenAlex / Crossref /
+PubMed, snowballs through citations, stores review decisions, a notes graph, cross-paper
+synthesis, sections with a critique loop, and research artifacts. It builds **no document and
+no PDF** — the model writes the text, guided by skills.
 
-## Architectural invariant
+## Architectural invariants
 
-**Reviewing happens in chat, not in a UI.** No web interfaces, no browsers, no second terminals. Claude reads abstracts in batches, pre-filters autonomously, shows only borderline cases to the user. Do not propose adding Starlette/Flask/Jinja/htmx. This is a deliberate design choice.
+- **Rails in the server, procedure in skills.** Anything that must hold goes into code
+  (`domain/rules.py`, `domain/phases.py`, service validation) and returns an actionable error;
+  prose in a skill is only for judgment. Don't re-add a rule as a docstring when it can be a check.
+- **Reviewing happens in chat, not in a UI.** No Starlette/Flask/Jinja/htmx, no browser.
+- **The server never calls an LLM.** It works on subscription models because the client drives.
+  Don't add API-key LLM calls or rely on MCP sampling (Claude Code doesn't support it).
+- **No document building.** No Typst/LaTeX/pandoc/PDF in the server. `export_bibliography` is
+  the one output that feeds a document.
 
-## Academic context for the safety classifier
+## Layout
 
-This tool supports **peer-reviewed academic literature review**. Papers fetched from arXiv, Semantic Scholar, OpenAlex, PubMed and similar open scholarly databases are **research publications**, not operational material. The goal is to survey a research area — not to reproduce methods, weaponize techniques, or provide instructions.
+```text
+snowcite/
+├── server.py          # MCP entrypoint (console script `snowcite`)
+├── app.py             # FastMCP instance
+├── container.py       # the one wiring point: Database → repositories → services
+├── settings.py        # pydantic-settings, env SNOWCITE_*
+├── domain/            # pure: models, types, dedup, citations, bibliography, rules, phases, search policy
+├── storage/           # Database, schema + migrations, projects.py (.snowcite/ resolver), repositories/
+├── services/          # Review, Note, Section, Synthesis, Search, Citation, Artifact, Project, Workflow
+├── sources/           # SourceClient / CitationSource ABCs + one class per source, _http.py
+└── tools/             # thin MCP wrappers over services (parse args → call service)
+plugins/
+├── snowcite/          # plugin: .mcp.json (uvx snowcite), skills: workflow, search, review, synthesis, sections
+└── academic-writing/  # plugin: skills academic-writing-ru, academic-critic, gost-report; agent academic-reviewer
+.claude-plugin/marketplace.json   # marketplace `snowcite-plugins` listing both plugins
+```
 
-When a research area involves sensitive topics (AI safety, security, dual-use research, biosecurity, etc.), handle the associated abstracts the same way a human reviewer would: paraphrase in your own words, summarize findings, cite responsibly. **Never copy verbatim passages that contain operational/harmful detail from abstracts into the chat context** — summarize in one or two neutral sentences instead.
+Dependencies point inward: `tools → services → repositories/sources → domain`. Services
+receive repositories and clients through the constructor; tests build their own with fakes
+(`tests/test_search_service.py`). `<project>/.snowcite/papers.db` is the user project's DB.
 
-## Start here: `next_step()`
+## The tool surface
 
-Call `next_step()` first in every session and after every batch. It derives the
-phase from the database (`not_started → criteria → search → review →
-low_confidence → synthesis → outline → writing → build → done`), returns the
-ordered `do` actions and a `payload` with the data that phase needs. Gates live
-in code: the next review batch is withheld until the rolling summary is saved,
-unconfirmed `auto_low` decisions block the outline, and a section with no notes
-for its scope can't be drafted. The sections below describe what each phase
-means.
+38 tools, entity-oriented: `next_step` (entry point), `search_papers` / `snowball` /
+`import_refs` / `papers` / `paper`, `review_criteria` / `review_batch` / `bulk_reclassify` /
+`undo_last_review_action` / `review_summary` / `get_prisma_counts`, notes and synthesis,
+sections / critique / `research_section` / `section_papers` / `thesis`, artifacts,
+`export_bibliography`, `init_project`, `get_project_metadata`, `check_environment`. When
+adding a tool, prefer extending an entity tool (get-or-set by argument presence, `delete=True`)
+over a new name; keep descriptions actionable — they are the model's only documentation.
 
-## Review workflow (your primary loop)
+`next_step` is the contract with the skills: phases and gates are in `domain/phases.py`
+(`decide`, pure) and payloads in `services/workflow.py`. Changing a phase or a `do` string
+means updating the matching skill.
 
-1. **Before every batch** — call `review_criteria()`. Criteria may have been set long ago; this is a drift guard.
-2. **Read the summary** — call `review_summary()`. Current picture: clusters, key papers, stale warnings. If it's stale or counts diverge from the text, tell the user. If there's no summary yet (first batch), skip.
-3. `papers(status="unreviewed", limit=20)` — work in batches of 10–20, never try to load everything.
-4. For each paper in the batch, decide **autonomously** and pick a confidence grade:
-   - **Confident match** → `review_batch([{paper_id, status: "approved", reason: "auto: matches criterion X", reviewed_by: "auto_high", notes: [{type, text, cluster}]}])`. Approved/maybe papers need at least one `claim` or `finding` note — the server rejects the decision otherwise. Notes go into the knowledge graph and feed synthesis + writing later.
-   - **Confident reject** → `review_batch([{paper_ids: [...], status: "rejected", reason: "auto: off-topic — Y", reviewed_by: "auto_high"}])`. No notes — rejected papers don't enter the graph.
-   - **Leaning one way but not sure** — decide anyway, but use `reviewed_by="auto_low"`. The user can later run `papers(reviewed_by="auto_low")` to sanity-check these.
-   - **Genuinely borderline** (two criteria conflict, mixed signal) — defer to the user.
-5. Borderline cases go to the user **one at a time**, in the user's project language:
+## Antipatterns
 
-   ```
-   Paper 7/87: "Title" (Year, Authors)
-   Brief: ...
-   Why borderline: ...
-   i / e / m?
-   ```
-
-   **Do not recommend a decision** — it creates bias. Facts and why it's hard to decide, nothing more.
-6. User answers → `review_batch([{paper_id, status, reason: "manual: <user comment>", reviewed_by: "user"}])`.
-7. **After each batch** (not after each paper) → `review_summary(summary, clusters)`:
-   - Summary ≤ 500 words, rolling (include everything previous, do not append)
-   - Use the categories from `review_criteria`; do not invent your own clusters.
-   - Clusters: `[{"topic": "...", "paper_ids": [...], "count": N}]`
-   - Singleton — overwrites on every call.
-8. `next_step()` periodically so the user sees progress.
-
-### Abstract policy for batches
-
-- `papers(status="unreviewed")` returns compact records **without abstracts** by default. This keeps the context lean on large reviews and prevents accumulation of harmful-sounding terminology that can trigger the safety classifier.
-- For clear-cut papers, the title / venue / year / authors are usually enough to classify.
-- For borderline papers, call `paper(paper_id)` to pull the full abstract. Summarize it in one or two neutral sentences in your message to the user — do not paste the raw abstract.
-
-### Working with the summary
-
-- **Do not trust the summary blindly.** It is your own prior generation and may contain inaccuracies. `review_summary()` returns live counts — always cross-check them against what the summary text claims.
-- **Stale = regenerate.** If `stale=true` (after snowball or manual edits), re-read approved/maybe papers and regenerate the summary.
-- **Summary for outline, papers for prose.** When writing, the summary informs structure but abstracts come from `papers(status="approved", cluster=..., include_abstracts=True)`.
-- **Clusters = user's categories.** If the user defined categories in criteria, use them. Do not reinvent.
-
-## Synthesis pass (after the corpus is reviewed)
-
-Per-paper notes describe single papers; synthesis names patterns *across* papers — gaps, contradictions, consensus, open questions. This is a separate pass; do not interleave it with reviewing.
-
-For each cluster:
-
-1. `get_cluster_notes(cluster)` — bundled view of per-paper notes grouped by paper + any existing cross-paper notes. One round-trip, no `get_notes` loops.
-2. Read across papers and identify:
-   - **gap** — something the cluster collectively doesn't cover.
-   - **contradiction** — two or more papers reaching incompatible conclusions on the same question.
-   - **consensus** — a non-trivial point most papers agree on.
-   - **open_question** — a question raised but not answered in the cluster.
-3. For each pattern → `add_synthesis_note(cluster, type, text, derived_from_note_ids=[...])`. Sources are mandatory — every cross-paper note must point at the per-paper notes that justify it via `derived_from`.
-4. After the pass, `find_gaps()` to surface clusters that still look thin or unsynthesised. Iterate or accept.
-
-`find_gaps` also flags cluster names that don't appear in the current `review_summary` — usually a typo or invented label. Fix the cluster on the offending notes before continuing.
-
-## Writing loop (per section, draft → critique → revise)
-
-Writing happens section-by-section, not document-at-a-time. Each section is an entity with its own scope, draft, status, and severity counters.
-
-1. **Outline.** `next_step()` (phase `done`) carries thesis + clusters + criteria. Propose section structure to the user (titles + scope = clusters/keywords/questions). After approval → `create_sections([...])`.
-2. **Per section, in order:**
-   1. `research_section(section_id)` if the user agrees the section's scope warrants more papers. Snowball through `snowball` is **not** automatic — the user runs it explicitly if needed.
-   2. `get_section_critique_inputs(section_id)` — the draft + relevant notes (filtered by `scope.clusters`) + linked papers. If notes are sparse, do another synthesis pass on those clusters first.
-   3. Draft the section. Update via `update_section(draft=..., status='drafting')`.
-   4. **Critique.** Switch voice to a strict academic reviewer. Generate `[{severity, type, text, suggested_action}]` issues — `severity ∈ {blocker, should_fix, nit}`. Submit via `record_section_critique(section_id, issues=...)`.
-      - Returns `{should_stop, severity, iteration}`. Stop when blockers=0 OR iteration≥2.
-      - Each issue should be actionable: cite a missing note, resolve a contradiction, drop an overclaimed sentence. Don't list aesthetic preferences as blockers.
-   5. **Revise.** `revise_section(section_id, new_draft=...)` resets counters and status to 'drafting'. Loop back to step ii.
-   6. Section done → `revise_section(section_id, new_draft=..., mark_done=True)` or `update_section(status='done')`.
-3. Document is done when every section has `status='done'`. There is no global "document done" toggle.
-
-## Snowball loop
-
-After the first review pass:
-
-1. `papers(status="approved")`
-2. For each → `snowball(ids, "references")` and/or `"citations"`
-3. New papers auto-save to `unreviewed` (dedup by DOI automatic). This marks the summary `stale=TRUE`.
-4. `review_summary()` → stale warning → regenerate summary including the new papers.
-5. Repeat the review loop on the new batch.
-
-## Writing style (when drafting the document)
-
-Write in the user's project language natively — don't translate from English word-for-word. Specifically:
-
-- Short sentences; fewer participle clauses; don't mirror English syntax.
-- Keep established English terminology as-is in italics on first mention (e.g. *alignment*, *prompt injection*, *jailbreak*, *fine-tuning*, *red teaming*, *RLHF*, *embeddings*, *guardrails*, *effect size*, *confounder*). Don't calque them into awkward target-language equivalents.
-- Do not translate method or system names: GCG, SmoothLLM, PAIR, HarmBench, AutoDAN, LLaMA, etc.
-- **On doubt about a term — ask the user.** Then apply the decision consistently across the entire document.
-
-## Antipatterns (what you must not do)
-
-- **Do not write scripts in `/tmp` to bulk-operate on the snowcite database.** Use MCP tools. If a tool is missing for a bulk operation, tell the user — do not work around it with side-channel scripts.
-- **Do not call source APIs directly via httpx.** Use `snowcite/sources/*` clients — they implement rate limiting, retry, and per-source concurrency caps.
-- **Do not edit `papers.db` via the sqlite CLI.** All state transitions go through MCP tools.
-- **Do not add a web UI** (Starlette, Flask, Jinja for UI, htmx). This is an explicit architectural rule.
-- **Do not integrate Zotero** (neither API nor CSL-JSON import). BibTeX / RIS import via `import_refs` is deliberately kept narrow.
-- **Do not parse PDFs yourself.** Use abstracts from the source APIs.
-- **Do not recommend a decision on borderline papers.** Show facts; let the user decide.
-- **Do not draft a section without notes for its scope.** If `get_section_critique_inputs` returns an empty `notes` array, the section's claims won't be supported. Either review more papers into those clusters or narrow the scope.
-- **Do not auto-trigger `research_section` or `snowball` from inside the critique loop.** Critique reports gaps; the user decides whether the cost of more search is justified.
-- **Do not invent cluster names.** Clusters come from `review_summary`. New labels in notes or section scope cause `find_gaps` to flag them as unknown — and break the link between the graph and the corpus.
-- **Do not overload `blocker` severity.** Reserve it for issues that genuinely block shipping the section (unsupported claim, factual error, contradiction with cited paper). Style preferences are nits.
+- **No scripts against `papers.db`** (sqlite CLI, ad-hoc Python). State goes through tools.
+- **No direct `httpx` to source APIs** — use `sources/*`, which rate-limit, retry and cap concurrency.
+- **No Zotero integration**; BibTeX / RIS via `import_refs` is deliberately narrow.
+- **No PDF parsing** — abstracts from the source APIs only.
+- **Don't write SQL in tools or services** — it belongs in a repository.
+- **Don't invent cluster names** — clusters come from the review summary; `find_gaps` flags strays.
+- **Never recommend a decision on a borderline paper** — it biases the user (skill rule; keep it in `review`).
 
 ## Stuck detection
 
-If you fail to resolve the same problem (compile error, search failure, parsing issue, etc.) twice in a row:
-
-- **Stop.** Do not iterate a third or fifth time.
-- Summarize what you tried and why it failed.
-- Ask the user how to proceed.
-
-A typical failure mode: compile fails due to a missing font / package, you patch the preamble, it fails again, you patch again — five iterations later the user has lost context and nothing works. Break the loop after the second failure.
+If you fail to resolve the same problem (a failing test, a source API quirk, a migration)
+twice in a row: stop, summarise what you tried and why it failed, and ask the user.
 
 ## Commands
 
 ```bash
-# connect to Claude Code
-claude mcp add snowcite -- uvx snowcite
-
-# with API keys (optional, higher rate limits)
-claude mcp add snowcite \
-  -e SNOWCITE_SEMANTIC_SCHOLAR_API_KEY=xxx \
-  -e SNOWCITE_OPENALEX_EMAIL=user@example.com \
-  -- uvx snowcite
-
-# for development (from a clone)
-uv sync && uv run python -m snowcite.server
-```
-
-## Project layout
-
-```text
-snowcite/
-├── server.py              # MCP entrypoint (installed as `snowcite` console script)
-├── app.py                 # FastMCP instance shared by all tool modules
-├── settings.py            # pydantic-settings, env SNOWCITE_*
-├── container.py           # builds Database, repositories and services (the one wiring point)
-├── domain/                # pure: models, types (Literals), dedup, citations, bibliography (BibTeX + cite keys), rules, phases
-├── services/              # Review, Note, Section, Synthesis, Search, Citation, Artifact, Project, Workflow services: validation + orchestration
-├── storage/               # Database, schema + migrations, projects.py (.snowcite/ resolver),
-│   └── repositories/      #   Paper, Review, Note, Section, Project, Artifact repositories
-├── logging.py             # shared `log` instance
-├── sources/               # SourceClient ABC + one class per source (arxiv, semantic_scholar, openalex, crossref, pubmed), _http
-├── templates/             # agents/*.md.j2, claude_md.j2 (move to skills)
-└── tools/                 # search, review, writing, export, doctor, init,
-                           #   session (next_step), import_refs
-<project>/.snowcite/papers.db   # user-project DB (not in this repo)
-```
-
-## Conventions
-
-- **Dedup**: DOI is the primary key. No DOI → normalized title (lowercase, strip punctuation, ≥0.9 similarity).
-- **Sources in DB**: `'arxiv' | 'semantic_scholar' | 'openalex' | 'crossref' | 'pubmed'`.
-- **Review statuses**: `'approved' | 'maybe' | 'rejected' | 'unreviewed'`.
-- **`reviewed_by`**: `'auto_high'` (Claude confident — direct criterion match), `'auto_low'` (extrapolation; user should sanity-check), or `'user'` (user decided). Critical for the audit trail and for `papers(reviewed_by="auto_low")` on the second pass.
-- **`reason` is required** in `review_batch` — even a short "matches criterion X". This is the PRISMA trail.
-- **All I/O is async** — aiosqlite, httpx.AsyncClient.
-
-## Source details
-
-- **arXiv** (`arxiv` lib): rate-limited at 1 req / 3 s by the client. No citation graph — `snowball` falls back to Semantic Scholar via DOI lookup.
-- **Semantic Scholar**: 100 req / 5 min unauthenticated, 100 req / s with a key (`SNOWCITE_SEMANTIC_SCHOLAR_API_KEY`). Supports both references and citations. Requests go through `sources/_http.py` which retries on 429/5xx with exponential backoff and honors `Retry-After`.
-- **OpenAlex**: polite pool via email (`SNOWCITE_OPENALEX_EMAIL`). Abstracts arrive as an inverted index — reconstructed to plaintext at ingestion.
-- **Crossref**: universal DOI metadata; reuses the OpenAlex `mailto` value for the polite pool.
-- **PubMed**: NCBI E-utilities (`esearch` + `esummary`). Abstracts require a separate `efetch` XML call and are left empty on search.
-
-## Testing
-
-```bash
-uv run pytest           # full suite
-uv run ruff check       # lint
-uv run ruff format      # autoformat
+uv sync --group dev && uv run python -m snowcite.server    # run from a clone
+uv run pytest                                               # full suite
+uv run ruff check && uv run ruff format                     # lint + format
+claude plugin validate .                                    # marketplace + plugins
 ```
 
 CI (`.github/workflows/test.yml`) runs ruff + pytest on push and PR.
+
+## Conventions
+
+- **Dedup**: DOI is the primary key. No DOI → normalized title (lowercase, strip punctuation, ≥ 0.9 similarity).
+- **Sources**: `arxiv | semantic_scholar | openalex | crossref | pubmed`.
+- **Review statuses**: `approved | maybe | rejected | unreviewed`. **`reviewed_by`**: `auto_high`
+  (confident), `auto_low` (extrapolation, the user confirms), `user`. `reason` is required — it is the PRISMA trail.
+- **Notes**: per-paper types (claim, finding, method, limitation) need `paper_id`; cross-paper
+  types (gap, contradiction, consensus, open_question) must not, and cite sources via `derived_from`.
+- **Sections**: status `outline | drafting | critiqued | done`; critique stops at zero blockers or two iterations.
+- **Citations** in drafts are `[N]` with the snowcite paper id; `export_bibliography` returns the id → BibTeX key map.
+- **All I/O is async** — aiosqlite, httpx.AsyncClient.
+- **Migrations are additive and gated**: `schema.py` (`CREATE IF NOT EXISTS`, `ALTER TABLE ADD COLUMN`, one-time data moves behind `PRAGMA user_version`).
+- **Commits**: short subject, no `Co-Authored-By`; bump CHANGELOG and `pyproject.toml` version once per release batch.
+
+## Source details
+
+- **arXiv** (`arxiv` lib): 1 req / 3 s. No citation graph — `snowball` resolves through Semantic Scholar via DOI.
+- **Semantic Scholar**: 100 req / 5 min unauthenticated, 100 req / s with `SNOWCITE_SEMANTIC_SCHOLAR_API_KEY`. References and citations. `sources/_http.py` retries 429/5xx with backoff and honours `Retry-After`.
+- **OpenAlex**: polite pool via `SNOWCITE_OPENALEX_EMAIL`. Abstracts arrive as an inverted index, rebuilt to plaintext at ingestion.
+- **Crossref**: DOI metadata; reuses the OpenAlex `mailto`.
+- **PubMed**: NCBI E-utilities (`esearch` + `esummary`); abstracts need a separate `efetch` and are left empty on search.
+
+## Plugins
+
+Skills are `plugins/*/skills/<name>/SKILL.md` (frontmatter `name`, `description`; keep bodies
+under ~500 lines, details in linked files). The `snowcite` plugin starts the server with
+`uvx snowcite`; `userConfig` carries the optional Semantic Scholar key and OpenAlex email.
+Plugin names can't start with `claude-` / `anthropic-`. Run `claude plugin validate .` after
+editing any manifest.

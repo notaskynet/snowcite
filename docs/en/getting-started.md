@@ -1,118 +1,48 @@
 # Getting started
 
-## 1. Create a project directory
+A first review from an empty directory.
 
-```bash
-mkdir my-review && cd my-review
-```
-
-That's it — `.snowcite/` and every generated file land here. `cd` into this
-directory any time you want to work on this review; snowcite resolves the
-active project from your current working directory.
-
-## 2. Initialize
-
-From Claude Code (inside `my-review/`):
-
-> Let's start a snowcite project. I'm writing a bachelor thesis on
-> adversarial attacks on LLMs, in Russian, ГОСТ 7.32, Typst.
-
-Claude collects metadata via `AskUserQuestion` (author, institution, deadline,
-etc.), then calls `init_project(metadata=...)`. The tool:
-
-- Creates `.snowcite/papers.db` and `.snowcite/cache/`.
-- Writes a tailored `CLAUDE.md` at the project root — this guides every future
-  Claude session in this directory.
-- Writes `.claude/agents/academic-reviewer.md` and `.claude/agents/humanizer.md`.
-- Emits a diff for `.claude/settings.json` (new file or missing entries) so
-  Claude can ask you how to resolve it: merge, overwrite with backup, or skip.
-
-## 3. Set review criteria
-
-Criteria are free text — include clauses, exclude clauses, and optionally
-user-defined clusters for the review summary:
+## 1. Start a project
 
 ```
-Include: adversarial attacks on language models (LLMs or text classifiers),
-         papers from 2023+.
-Exclude: vision-only adversarial work, hardware attacks.
-Clusters: attacks-optimization, attacks-jailbreak, defenses-detection,
-         defenses-certified, evaluation, surveys.
+> I want a literature review on <topic>, thesis in Russian, GOST 7.32.
 ```
 
-Claude calls `set_review_criteria(criteria_text=...)`.
+Claude calls `next_step()` → phase `not_started`, asks for the project profile (language, discipline, standard, optional author, institution, targets) and runs `init_project`. A `.snowcite/` folder appears next to your files; nothing else is generated.
 
-## 4. Search and review
+## 2. Criteria
 
-```
-Search arXiv, Semantic Scholar and OpenAlex for "adversarial attacks LLM
-2023-2025", limit 50 each.
-```
+Phase `criteria`. Agree what to include, what to exclude and the **categories** the corpus will be organised into. They are stored with `review_criteria` and become the clusters of the summary.
 
-Claude calls `search_papers(query, limit=50)`. By default, `auto_save=True`
-persists results to the DB and returns `{saved, duplicates, new_ids, titles}` —
-abstracts never enter your chat context. Then:
+## 3. Search
 
-```
-Start reviewing. Batch of 20.
-```
+Phase `search`. Claude runs `search_papers` for each topic from the criteria; results are saved as `unreviewed` and only titles come back, never abstracts. You can also `import_refs` a `.bib` / `.ris` export.
 
-For each paper in the batch, Claude decides autonomously and tags the decision
-with `reviewed_by` (`auto_high` for clear matches, `auto_low` for less certain,
-or defers to you for genuinely borderline ones). After each batch it saves a
-rolling review summary.
+## 4. Review
 
-## 5. Snowball
-
-Once you have an approved set, deepen through citations:
+Phase `review`. Claude takes batches of 20 compact records from `next_step()`, decides each (approved / maybe / rejected, with a confidence grade) and submits them in one `review_batch` call. Approved and maybe papers carry `claim` / `finding` notes. Only genuinely borderline papers reach you, one at a time:
 
 ```
-Run snowball — expand_citations(references) on the approved papers, then
-re-review the new ones.
+Paper 7/87: "Title" (2023, Authors)
+Brief: ...
+Why borderline: ...
+include / exclude / maybe?
 ```
 
-New papers from the snowball are added to `unreviewed`; the summary is marked
-stale. Iterate.
+After each batch Claude rewrites the rolling summary (`review_summary`); the next batch is withheld until it does.
 
-## 6. Outline and skeleton
+## 5. Confirm uncertain calls
 
-```
-Propose an outline for the document.
-```
+Phase `low_confidence`. Every `auto_low` decision is walked through with you before synthesis.
 
-Claude calls `save_outline(sections=[...])` with sections, paper IDs per
-section, and target word counts. You approve or edit. Same for
-`save_skeleton(sections=[...])` — the 3-5-sentence version of each section —
-which gives you the arc in about 500 words total.
+## 6. Synthesis
 
-## 7. Expand section by section
+Phase `synthesis`. Claude reads the notes cluster by cluster and records gaps, contradictions, consensus and open questions, each traced to its source notes.
 
-```
-Write the first section.
-```
+## 7. Write
 
-Claude drafts, calls `check_section_drift`, then `save_section`. It then
-spawns the `academic-reviewer` subagent, which reads your section + the
-assigned papers' abstracts cold (fresh context) and returns a structured
-findings list — unsupported claims, citation misuse, fabricated quotes,
-logical gaps. Decide which to fix; save the revision.
+Phase `done`: the corpus is ready. Claude proposes an outline (`create_sections`), then per section drafts from notes, critiques and revises. With the `academic-writing` plugin it follows Russian scientific style and, for a report, the GOST 7.32 structure. The final document (Word, Typst, LaTeX, Markdown) is produced in whatever format you use; `export_bibliography` gives the `.bib` and the `[N]` → cite-key map.
 
-## 8. Polish
+## After `/clear` or in a new session
 
-After all sections are in:
-
-```
-Run polish_document for cross-section consistency, then humanizer.
-```
-
-`polish_document` handles transitions and cross-section duplication. Then
-the `humanizer` subagent flags machine-translated phrasing, LLM tics and
-awkward sentences — per-phrase replacement suggestions you accept or reject.
-
-## 9. Compile
-
-```
-compile_pdf on review.typ
-```
-
-`typst compile` runs and drops `review.pdf` next to the source. Done.
+Call `next_step()` first. It carries the phase, counts and the data for it — you lose nothing.

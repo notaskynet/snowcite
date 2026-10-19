@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Plugins and skills.** `.claude-plugin/marketplace.json` (`snowcite-plugins`) lists two plugins: `snowcite` (the MCP server via `uvx snowcite`, optional Semantic Scholar key and OpenAlex email as plugin settings, skills `workflow`, `search`, `review`, `synthesis`, `sections`) and `academic-writing` (skills `academic-writing-ru`, `academic-critic`, `gost-report`, agent `academic-reviewer`; works without snowcite). Install with `claude plugin marketplace add cop1cat/snowcite`.
+- `export_bibliography` returns `keys`: snowcite paper id → BibTeX cite key.
 - **`next_step()`** — one entry point that derives the phase from the database (`not_started`, `criteria`, `search`, `review`, `low_confidence`, `synthesis`, `outline`, `writing`, `build`, `done`) and returns the ordered actions plus the data for that phase (criteria and the next compact batch while reviewing, the current section and its next action while writing). Gates are enforced in code: the next review batch is withheld until the rolling summary is saved, unconfirmed `auto_low` decisions block the outline, and a section without notes for its scope can't be drafted.
 - `get_prisma_counts` — PRISMA numbers from the review trail.
-- `ProjectService`/`ClaudeFiles` own project init and the generated Claude Code files.
+- `ProjectService` owns project init.
 
 ### Changed
 
@@ -31,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- **Generated project files.** `init_project` no longer writes `CLAUDE.md`, `.claude/agents/*` or `.claude/settings.json`, and `apply_settings_diff` is gone; the instructions ship as plugin skills. The Jinja templates and the `jinja2` dependency are removed.
 - **Document building and PDF.** snowcite no longer renders or compiles anything: `write_document`, `compile_pdf`, `estimate_pages`, `set_backend`, `export_docx`, the PRISMA/overview/code/appendix snippet tools, the Typst and LaTeX backends and templates, Hayagriva output, and the `backend` project field. Writing the document is the model's job (skills); `export_bibtex`/`export_ris` stay. `generate_prisma_flow` became `get_prisma_counts` (numbers only).
 - `next_step` ends at synthesis (`done` = corpus ready, hand over to writing skills); the `outline`, `writing` and `build` phases are gone.
 - The v0.2 writing pipeline: `save_outline`, `get_outline`, `approve_outline`, `save_skeleton`, `get_skeleton`, `approve_skeleton`, `check_section_drift`, `save_section`, `get_section_content`, `list_section_contents`, `polish_section`, `polish_document`, `regenerate_section_brief`, `prepare_section_for_review`. Use sections + the critique loop.

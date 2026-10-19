@@ -1,0 +1,21 @@
+{
+  "name": "snowcite-plugins",
+  "owner": { "name": "cop1cat" },
+  "description": "Systematic literature review for Claude: search, snowball, review and synthesis tools plus the skills that drive them, and standalone academic-writing skills.",
+  "plugins": [
+    {
+      "name": "snowcite",
+      "source": "./plugins/snowcite",
+      "description": "MCP server for systematic literature review (arXiv, Semantic Scholar, OpenAlex, Crossref, PubMed) with workflow, review, synthesis and section skills.",
+      "category": "research",
+      "tags": ["literature-review", "mcp", "research"]
+    },
+    {
+      "name": "academic-writing",
+      "source": "./plugins/academic-writing",
+      "description": "Skills for academic writing: Russian scientific style, a strict reviewer rubric, and GOST 7.32 report structure. Works on its own or with snowcite.",
+      "category": "writing",
+      "tags": ["academic-writing", "gost", "russian"]
+    }
+  ]
+}
