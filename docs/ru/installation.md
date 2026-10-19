@@ -8,7 +8,7 @@ snowcite — Python-пакет, который работает как MCP-се�
 ## Как плагины (рекомендуется)
 
 ```bash
-claude plugin marketplace add cop1cat/snowcite
+claude plugin marketplace add notaskynet/snowcite
 claude plugin install snowcite@snowcite-plugins           # сервер + skills ревью
 claude plugin install academic-writing@snowcite-plugins   # по желанию: научный русский, критик, ГОСТ
 ```
@@ -45,7 +45,7 @@ claude mcp add snowcite \
 ## Разработка
 
 ```bash
-git clone https://github.com/cop1cat/snowcite.git && cd snowcite
+git clone https://github.com/notaskynet/snowcite.git && cd snowcite
 uv sync --group dev
 uv run pytest && uv run ruff check
 claude plugin validate .     # маркетплейс и оба плагина

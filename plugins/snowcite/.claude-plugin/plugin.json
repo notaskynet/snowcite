@@ -3,9 +3,9 @@
   "displayName": "snowcite",
   "version": "0.4.0",
   "description": "Systematic literature review: search, snowball, review and synthesis tools with the skills that drive them.",
-  "author": { "name": "cop1cat" },
-  "homepage": "https://cop1cat.github.io/snowcite/",
-  "repository": "https://github.com/cop1cat/snowcite",
+  "author": { "name": "notaskynet" },
+  "homepage": "https://notaskynet.github.io/snowcite/",
+  "repository": "https://github.com/notaskynet/snowcite",
   "license": "MIT",
   "keywords": ["literature-review", "systematic-review", "snowballing", "mcp"],
   "userConfig": {
