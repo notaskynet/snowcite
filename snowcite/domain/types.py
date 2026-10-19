@@ -16,6 +16,8 @@ type Direction = Literal["references", "citations"]
 # the user should sanity-check; `user` = user decided.
 type ReviewedBy = Literal["auto_high", "auto_low", "user"]
 type Confidence = Literal["high", "low"]
+STATUSES: tuple[str, ...] = ("approved", "maybe", "rejected", "unreviewed")
+REVIEWED_BY: tuple[str, ...] = ("auto_high", "auto_low", "user")
 type Severity = Literal["ok", "warn", "error"]
 type Phase = Literal[
     "not_started",
@@ -75,7 +77,7 @@ class PaperRecord(TypedDict, total=False):
     review_note: str | None
     reviewed_by: ReviewedBy | None
     reviewed_at: str | None
-    # Alt key used by get_low_confidence_reviews where status is aliased without prefix:
+    # Alt key used by papers(reviewed_by="auto_low") where status is aliased without prefix:
     status: Status
     reason: str | None
 

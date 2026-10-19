@@ -6,7 +6,7 @@ the resulting papers through `PaperRepository.persist` — same
 DB write path as `search_papers`.
 
 Papers missing an abstract get best-effort enrichment via OpenAlex / Semantic
-Scholar lookups by DOI — `get_unreviewed_papers` assumes an abstract for
+Scholar lookups by DOI — `papers(status="unreviewed")` assumes an abstract for
 borderline decisions, so we try to fill it in before review starts.
 """
 
@@ -296,7 +296,7 @@ async def _import_core(papers: list[Paper], enrich: bool) -> dict[str, Any]:
         "without_abstract": no_abstract,
         "note": (
             "Papers without abstracts still land in `unreviewed` but will be sparse "
-            "during review. Fetch a full snowball via `expand_citations(new_id)` or "
+            "during review. Fetch a full snowball via `snowball([new_id], ...)` or "
             "re-run the source search to enrich."
         )
         if no_abstract
@@ -305,30 +305,20 @@ async def _import_core(papers: list[Paper], enrich: bool) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def import_bibtex(file_path: str, enrich_abstracts: bool = True) -> dict[str, Any]:
-    """Import papers from a BibTeX file. DOI dedup + optional abstract enrichment.
+async def import_refs(file_path: str, enrich_abstracts: bool = True) -> dict[str, Any]:
+    """Import papers from a BibTeX (`.bib`) or RIS (`.ris`) reference-manager export.
 
-    If `enrich_abstracts=True` (default), papers without an abstract get one fetched
-    from OpenAlex or Semantic Scholar by DOI. Skip enrichment if you're offline or
-    want the import to stay fast — you can always enrich later via snowball.
+    DOI dedup applies. If `enrich_abstracts=True` (default), papers without an abstract
+    get one fetched from OpenAlex or Semantic Scholar by DOI; skip it when offline or
+    when you want the import to stay fast — a snowball enriches later. Returns
+    `{parsed, saved, duplicates, new_ids, without_abstract, note}`.
     """
     path = Path(file_path).resolve()
     if not path.exists():
         return {"error": f"file not found: {file_path}"}
+    suffix = path.suffix.lower()
+    if suffix not in (".bib", ".ris"):
+        return {"error": f"unsupported extension {suffix!r}: expected .bib or .ris"}
     text = path.read_text(encoding="utf-8")
-    papers = parse_bibtex(text)
-    return await _import_core(papers, enrich_abstracts)
-
-
-@mcp.tool()
-async def import_ris(file_path: str, enrich_abstracts: bool = True) -> dict[str, Any]:
-    """Import papers from a RIS file (Mendeley / EndNote / Zotero RIS export).
-
-    See `import_bibtex` for the enrichment contract.
-    """
-    path = Path(file_path).resolve()
-    if not path.exists():
-        return {"error": f"file not found: {file_path}"}
-    text = path.read_text(encoding="utf-8")
-    papers = parse_ris(text)
+    papers = parse_bibtex(text) if suffix == ".bib" else parse_ris(text)
     return await _import_core(papers, enrich_abstracts)

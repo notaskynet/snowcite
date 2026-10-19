@@ -9,11 +9,10 @@ from snowcite.tools.import_refs import (
     _authors_from_bibtex,
     _parse_bibtex_fields,
     _strip_braces,
-    import_bibtex,
-    import_ris,
     parse_bibtex,
     parse_ris,
 )
+from tests.helpers import import_bibtex, import_ris
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────

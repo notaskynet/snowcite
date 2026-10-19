@@ -62,10 +62,10 @@ async def test_search_preview_does_not_save(tmp_project: Path):
     svc = _service({"openalex": FakeSource("openalex", [p])}, FakeCitations(None, []))
     res = await svc.search("q", sources=["openalex"], auto_save=False, abstract_max_chars=10)
     assert res["count"] == 1 and len(res["papers"][0]["abstract"]) == 10
-    assert await container.papers.find(None, None, None, None, None, 10, 0) == []
+    assert await container.papers.find() == []
 
 
-async def test_expand_citations_resolves_via_doi_and_reports_errors(tmp_project: Path):
+async def test_snowball_resolves_via_doi_and_reports_per_paper_errors(tmp_project: Path):
     await container.papers.persist(
         [
             Paper(source="openalex", source_id="1", title="With doi", doi="10.1/a"),
@@ -74,11 +74,10 @@ async def test_expand_citations_resolves_via_doi_and_reports_errors(tmp_project:
     )
     related = [Paper(source="semantic_scholar", source_id="r", title="Ref")]
     svc = _service({}, FakeCitations("ss-1", related))
-    ok = await svc.expand_citations(1, "references", 10, True, 0)
-    assert ok["saved"] == 1
 
-    assert "error" in await svc.expand_citations(2, "references", 10, True, 0)
-    assert "not found" in (await svc.expand_citations(99, "references", 10, True, 0))["error"]
+    res = await svc.snowball([1, 2, 99], "references", 10, True, 0)
+    assert res["saved"] == 1 and res["titles"] == ["Ref"]
+    assert {e["paper_id"] for e in res["errors"]} == {2, 99}
 
 
 async def test_search_without_sources_uses_project_discipline(tmp_project: Path):

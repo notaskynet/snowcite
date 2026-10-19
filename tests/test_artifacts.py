@@ -6,7 +6,7 @@ import pytest
 
 from snowcite.container import container
 from snowcite.domain.artifacts import citation_label
-from snowcite.tools.artifacts import (
+from tests.helpers import (
     add_artifact_inline,
     delete_artifact,
     get_artifact,

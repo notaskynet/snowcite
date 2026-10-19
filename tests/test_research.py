@@ -8,13 +8,15 @@ import pytest
 
 from snowcite.container import container
 from snowcite.domain.models import Paper
-from snowcite.tools.research import (
+from snowcite.tools.research import research_section
+from snowcite.tools.sections import update_section
+from tests.helpers import (
+    create_section,
+    delete_section,
     get_section_papers,
     link_paper_to_section,
-    research_section,
     unlink_paper_from_section,
 )
-from snowcite.tools.sections import create_section, delete_section, update_section
 
 
 def _fake_search_results(per_call: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:

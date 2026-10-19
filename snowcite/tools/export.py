@@ -1,11 +1,7 @@
-"""Export the approved bibliography.
-
-- `export_bibtex` — `.bib` from the current approved set
-- `export_ris` — RIS flavored for Mendeley / EndNote import
-"""
+"""Export the approved bibliography as BibTeX or RIS."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from snowcite.app import mcp
 from snowcite.container import container
@@ -17,20 +13,6 @@ from snowcite.storage.projects import require_project_root
 def _default_output_path(name: str) -> Path:
     return require_project_root() / name
 
-
-# ─── BibTeX ─────────────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-async def export_bibtex(output_path: str | None = None) -> dict[str, Any]:
-    """Write a .bib file for the approved set. Reuses per-paper bibtex when present."""
-    papers = await container.papers.load_approved()
-    path = Path(output_path) if output_path else _default_output_path("references.bib")
-    path.write_text(build_bibtex_document(list(papers)) + "\n", encoding="utf-8")
-    return {"path": str(path), "entries": len(papers)}
-
-
-# ─── RIS ────────────────────────────────────────────────────────────────────
 
 # Minimal RIS entries — TY + TI + AU + PY + JO + DO + AB + ER. Most reference
 # managers (Mendeley, EndNote, Zotero) accept this subset for import.
@@ -54,10 +36,23 @@ def _ris_entry(paper: ApprovedPaper) -> str:
 
 
 @mcp.tool()
-async def export_ris(output_path: str | None = None) -> dict[str, Any]:
-    """Write a RIS file for Mendeley / EndNote import."""
+async def export_bibliography(
+    format: Literal["bibtex", "ris"] = "bibtex",  # noqa: A002 — natural parameter name
+    output_path: str | None = None,
+) -> dict[str, Any]:
+    """Write the approved set as `references.bib` (BibTeX) or `references.ris` (RIS).
+
+    BibTeX reuses a paper's own bibtex when present and publishes the same cite keys
+    the rest of snowcite derives. RIS is for Mendeley / EndNote / Zotero import.
+    Default location is the project root.
+    """
     papers = await container.papers.load_approved()
-    body = "\n\n".join(_ris_entry(p) for p in papers) + "\n"
-    path = Path(output_path) if output_path else _default_output_path("references.ris")
+    if format == "bibtex":
+        body = build_bibtex_document(list(papers)) + "\n"
+        default_name = "references.bib"
+    else:
+        body = "\n\n".join(_ris_entry(p) for p in papers) + "\n"
+        default_name = "references.ris"
+    path = Path(output_path) if output_path else _default_output_path(default_name)
     path.write_text(body, encoding="utf-8")
-    return {"path": str(path), "entries": len(papers)}
+    return {"path": str(path), "format": format, "entries": len(papers)}

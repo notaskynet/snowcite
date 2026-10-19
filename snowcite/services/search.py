@@ -56,10 +56,35 @@ class SearchService:
             result["failed_sources"] = failed
         return result
 
-    async def save_papers(self, papers: list[dict[str, Any]]) -> dict[str, Any]:
-        return dict(await self._papers.persist([Paper.model_validate(p) for p in papers]))
+    async def snowball(
+        self,
+        paper_ids: list[int],
+        direction: Direction,
+        limit: int,
+        auto_save: bool,
+        abstract_max_chars: int,
+    ) -> dict[str, Any]:
+        """Expand several papers in turn and merge the results; failures are per paper."""
+        totals: dict[str, Any] = {"saved": 0, "duplicates": 0, "new_ids": [], "titles": []}
+        previews: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+        for paper_id in paper_ids:
+            res = await self._expand(paper_id, direction, limit, auto_save, abstract_max_chars)
+            if "error" in res:
+                errors.append({"paper_id": paper_id, "error": res["error"]})
+            elif auto_save:
+                totals["saved"] += res["saved"]
+                totals["duplicates"] += res["duplicates"]
+                totals["new_ids"] += res["new_ids"]
+                totals["titles"] += res["titles"]
+            else:
+                previews += res["papers"]
+        out = totals if auto_save else {"papers": previews, "count": len(previews)}
+        if errors:
+            out["errors"] = errors
+        return out
 
-    async def expand_citations(
+    async def _expand(
         self,
         paper_id: int,
         direction: Direction,
@@ -87,22 +112,6 @@ class SearchService:
 
         related = await self._citations.get_related(ss_id, direction, limit)
         return await self._save_or_preview(related, auto_save, abstract_max_chars)
-
-    async def find_saved(
-        self,
-        status: str | None,
-        source: str | None,
-        year_from: int | None,
-        year_to: int | None,
-        search: str | None,
-        limit: int,
-        offset: int,
-    ) -> list[dict[str, Any]]:
-        return await self._papers.find(status, source, year_from, year_to, search, limit, offset)
-
-    async def details(self, paper_id: int) -> dict[str, Any]:
-        paper = await self._papers.details(paper_id)
-        return paper if paper is not None else {"error": f"paper {paper_id} not found"}
 
     async def _save_or_preview(
         self, papers: list[Paper], auto_save: bool, abstract_max_chars: int

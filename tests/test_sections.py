@@ -6,14 +6,14 @@ from pathlib import Path
 import pytest
 
 from snowcite.container import container
-from snowcite.tools.sections import (
+from snowcite.tools.sections import update_section
+from tests.helpers import (
     bulk_create_sections,
     create_section,
     delete_section,
     get_outline_inputs,
     get_section,
     list_sections,
-    update_section,
 )
 
 

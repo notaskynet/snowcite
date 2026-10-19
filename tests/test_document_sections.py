@@ -3,8 +3,9 @@
 from pathlib import Path
 
 from snowcite.container import container
-from snowcite.tools.sections import create_section, get_section, update_section
+from snowcite.tools.sections import update_section
 from snowcite.tools.writing import gap_check, rewrite_citations
+from tests.helpers import create_section, get_section
 
 
 async def _draft(title: str, draft: str, parent_id: int | None = None) -> int:

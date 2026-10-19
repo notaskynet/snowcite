@@ -8,11 +8,7 @@ import pytest
 from snowcite.container import container
 from snowcite.domain.models import Paper
 from snowcite.storage.projects import create_project_dir
-from snowcite.tools.review import (
-    get_low_confidence_reviews,
-    get_unreviewed_papers,
-    set_review_status,
-)
+from tests.helpers import get_low_confidence_reviews, get_unreviewed_papers, set_review_status
 
 
 @pytest.mark.asyncio

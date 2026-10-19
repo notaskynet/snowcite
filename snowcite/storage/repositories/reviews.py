@@ -7,7 +7,6 @@ import aiosqlite
 
 from snowcite.storage.database import Database
 from snowcite.storage.repositories.notes import NoteRepository
-from snowcite.storage.rows import paper_row_to_dict
 
 
 _STATUSES = ("approved", "maybe", "rejected", "unreviewed")
@@ -36,81 +35,7 @@ class ReviewRepository:
             row = await cur.fetchone()
         return dict(row) if row else None
 
-    # ─── Reading papers by review state ─────────────────────────────────
-
-    async def unreviewed(
-        self,
-        limit: int,
-        source: str | None,
-        year_from: int | None,
-        year_to: int | None,
-        include_abstracts: bool,
-    ) -> list[dict[str, Any]]:
-        # Two static query variants avoid a dynamic f-string (and the S608 lint).
-        if include_abstracts:
-            query = """
-                SELECT p.id, p.source, p.title, p.year, p.venue, p.abstract,
-                       p.authors_json, p.doi
-                FROM papers p JOIN reviews r ON r.paper_id = p.id
-                WHERE r.status = 'unreviewed'
-            """
-        else:
-            query = """
-                SELECT p.id, p.source, p.title, p.year, p.venue, NULL AS abstract,
-                       p.authors_json, p.doi
-                FROM papers p JOIN reviews r ON r.paper_id = p.id
-                WHERE r.status = 'unreviewed'
-            """
-        params: list[Any] = []
-        query, params = _with_filters(query, params, source, year_from, year_to)
-        query += " ORDER BY p.id LIMIT ?"
-        params.append(limit)
-        async with self._db.connection() as conn:
-            cur = await conn.execute(query, params)
-            rows = await cur.fetchall()
-        out = [paper_row_to_dict(r) for r in rows]
-        if not include_abstracts:
-            for d in out:
-                d.pop("abstract", None)
-        return out
-
-    async def low_confidence(self, status: str | None, limit: int) -> list[dict[str, Any]]:
-        query = """
-            SELECT p.id, p.source, p.title, p.year, p.venue, p.authors_json, p.doi,
-                   r.status, r.reason, r.reviewed_at
-            FROM papers p JOIN reviews r ON r.paper_id = p.id
-            WHERE r.reviewed_by = 'auto_low'
-        """
-        params: list[Any] = []
-        if status is not None:
-            query += " AND r.status = ?"
-            params.append(status)
-        query += " ORDER BY r.reviewed_at DESC LIMIT ?"
-        params.append(limit)
-        async with self._db.connection() as conn:
-            cur = await conn.execute(query, params)
-            rows = await cur.fetchall()
-        return [paper_row_to_dict(r) for r in rows]
-
-    async def approved_for_writing(
-        self, paper_ids: list[int] | None, limit: int, offset: int
-    ) -> list[dict[str, Any]]:
-        query = """
-            SELECT p.id, p.source, p.doi, p.title, p.year, p.venue, p.abstract,
-                   p.authors_json, p.bibtex
-            FROM papers p JOIN reviews r ON r.paper_id = p.id
-            WHERE r.status = 'approved'
-        """
-        params: list[Any] = []
-        if paper_ids is not None:
-            query += f" AND p.id IN ({','.join('?' * len(paper_ids))})"
-            params.extend(paper_ids)
-        query += " ORDER BY p.year, p.id LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-        async with self._db.connection() as conn:
-            cur = await conn.execute(query, params)
-            rows = await cur.fetchall()
-        return [paper_row_to_dict(r) for r in rows]
+    # ─── Selecting papers for bulk operations ───────────────────────────
 
     async def select_paper_ids(
         self,
@@ -390,7 +315,7 @@ class ReviewRepository:
             cur = await conn.execute("SELECT clusters_json FROM review_summary WHERE id = 1")
             row = await cur.fetchone()
         if not row:
-            return {"error": "no review_summary — run save_review_summary first"}
+            return {"error": "no review_summary — run review_summary first"}
         clusters_data = json.loads(row["clusters_json"])
         match = next(
             (c for c in clusters_data if c.get("topic", "").lower() == cluster.lower()), None

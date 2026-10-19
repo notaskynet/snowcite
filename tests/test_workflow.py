@@ -6,8 +6,8 @@ from pathlib import Path
 from snowcite.container import container
 from snowcite.domain.models import Paper
 from snowcite.domain.phases import WorkflowState, decide
-from snowcite.tools.review import save_review_summary, set_review_criteria, set_review_status
 from snowcite.tools.session import next_step
+from tests.helpers import save_review_summary, set_review_criteria, set_review_status
 
 
 # ─── decide(): pure ─────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ async def test_review_batch_withheld_until_summary_then_low_confidence_gate(tmp_
     )
     r = await next_step()
     assert r["phase"] == "review" and "batch" not in r["payload"]
-    assert any("save_review_summary" in d for d in r["do"])
+    assert any("review_summary(" in d for d in r["do"])
 
     await save_review_summary("summary", [{"topic": "T", "paper_ids": [1], "count": 1}])
     r = await next_step()

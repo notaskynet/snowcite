@@ -7,12 +7,8 @@ import pytest
 
 from snowcite.container import container
 from snowcite.domain.models import Paper
-from snowcite.tools.notes import add_note
-from snowcite.tools.synthesis import (
-    add_synthesis_note,
-    find_gaps,
-    get_cluster_notes,
-)
+from snowcite.tools.synthesis import add_synthesis_note, find_gaps, get_cluster_notes
+from tests.helpers import add_note
 
 
 async def _seed_two_papers() -> tuple[int, int]:

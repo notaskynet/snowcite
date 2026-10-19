@@ -9,7 +9,7 @@ the same as discovery, and the user may link them manually if they consider
 the paper relevant.
 
 Snowball is expensive — this tool deliberately does not call
-`expand_citations` automatically. The user runs it explicitly once they've
+`snowball` automatically. The user runs it explicitly once they've
 seen what `research_section` brought in.
 """
 
@@ -40,28 +40,27 @@ async def research_section(
 
 
 @mcp.tool()
-async def link_paper_to_section(
-    paper_id: int,
+async def section_papers(
     section_id: int,
+    link: list[int] | None = None,
+    unlink: list[int] | None = None,
     via_query: str | None = None,
 ) -> dict[str, Any]:
-    """Manually attach a paper to a section. Idempotent.
+    """Papers tied to a section; optionally link or unlink some first.
 
-    Use when an already-saved paper turns out to be relevant to a section —
-    `research_section` only links *newly discovered* papers, so existing ones
-    need this hook.
+    `link` attaches already-saved papers (idempotent; `research_section` only links
+    papers it newly discovers, so existing ones need this). `unlink` removes a link
+    without touching the paper. Returns `{papers, errors?}` where `papers` carries
+    review status and the query that surfaced each one, newest first.
     """
-    return await container.section_service.link_paper(paper_id, section_id, via_query)
-
-
-@mcp.tool()
-async def unlink_paper_from_section(paper_id: int, section_id: int) -> dict[str, Any]:
-    """Remove a paper↔section link without touching the paper itself."""
-    return await container.section_service.unlink_paper(paper_id, section_id)
-
-
-@mcp.tool()
-async def get_section_papers(section_id: int) -> list[dict[str, Any]]:
-    """Papers linked to this section, with current review status and the query
-    that surfaced them (if any). Newest first."""
-    return await container.section_service.section_papers(section_id)
+    errors: list[dict[str, Any]] = []
+    for paper_id in link or []:
+        res = await container.section_service.link_paper(paper_id, section_id, via_query)
+        if "error" in res:
+            errors.append({"paper_id": paper_id, "error": res["error"]})
+    for paper_id in unlink or []:
+        await container.section_service.unlink_paper(paper_id, section_id)
+    out: dict[str, Any] = {"papers": await container.section_service.section_papers(section_id)}
+    if errors:
+        out["errors"] = errors
+    return out
