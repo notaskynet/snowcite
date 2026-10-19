@@ -1,7 +1,13 @@
 """Wiring: one place that builds the database, repositories and services."""
 
 from snowcite.render.compiler import Compiler
-from snowcite.services import BuildService, NoteService, ReviewService
+from snowcite.services import (
+    BuildService,
+    NoteService,
+    ReviewService,
+    SectionService,
+    SynthesisService,
+)
 from snowcite.storage.database import Database
 from snowcite.storage.repositories import (
     NoteRepository,
@@ -24,6 +30,10 @@ class Container:
 
         self.review_service = ReviewService(self.reviews, self.sections, self.project)
         self.note_service = NoteService(self.notes)
+        self.section_service = SectionService(
+            self.sections, self.notes, self.papers, self.reviews, self.project
+        )
+        self.synthesis = SynthesisService(self.notes, self.reviews)
         self.build = BuildService(self.papers, self.sections, self.project, Compiler())
 
 

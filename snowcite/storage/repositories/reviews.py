@@ -313,6 +313,15 @@ class ReviewRepository:
             "updated_at": row["updated_at"],
         }
 
+    async def summary_topics(self) -> set[str] | None:
+        """Cluster topics in the current summary; None when no summary exists."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute("SELECT clusters_json FROM review_summary WHERE id = 1")
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return {c.get("topic") for c in json.loads(row["clusters_json"])}
+
     async def resolve_cluster_paper_ids(self, cluster: str) -> list[int] | dict[str, Any]:
         """Look up paper_ids for a cluster in the current review_summary.
 

@@ -129,3 +129,91 @@ class NoteRepository:
         for r in rows:
             by_cluster.setdefault(r["cluster"] or "(unscoped)", {})[r["type"]] = r["n"]
         return by_cluster
+
+    # ─── Reads and writes used by synthesis and critique ────────────────
+
+    async def in_clusters(self, clusters: list[str]) -> list[dict[str, Any]]:
+        """Notes whose cluster is in `clusters`: per-paper first, then cross-paper."""
+        if not clusters:
+            return []
+        placeholders = ",".join("?" * len(clusters))
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                f"""
+                SELECT id, paper_id, cluster, type, text
+                FROM notes WHERE cluster IN ({placeholders})
+                ORDER BY paper_id NULLS LAST, id
+                """,  # noqa: S608 — one placeholder per cluster name
+                clusters,
+            )
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def cluster_view(self, cluster: str) -> tuple[list[Any], list[Any]]:
+        """`(notes joined with paper title/year, links from those notes)` for one cluster."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                """
+                SELECT n.id, n.paper_id, n.type, n.text, n.created_at, p.title, p.year
+                FROM notes n LEFT JOIN papers p ON p.id = n.paper_id
+                WHERE n.cluster = ?
+                ORDER BY n.paper_id NULLS LAST, n.id
+                """,
+                (cluster,),
+            )
+            notes = list(await cur.fetchall())
+            cur = await conn.execute(
+                """
+                SELECT from_note_id, to_note_id, kind FROM note_links
+                WHERE from_note_id IN (SELECT id FROM notes WHERE cluster = ?)
+                """,
+                (cluster,),
+            )
+            return notes, list(await cur.fetchall())
+
+    async def paper_ids_of(self, note_ids: list[int]) -> dict[int, int | None]:
+        """`{note_id: paper_id}` for the ids that exist."""
+        if not note_ids:
+            return {}
+        placeholders = ",".join("?" * len(note_ids))
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                f"SELECT id, paper_id FROM notes WHERE id IN ({placeholders})",  # noqa: S608
+                note_ids,
+            )
+            return {r["id"]: r["paper_id"] for r in await cur.fetchall()}
+
+    async def add_synthesis(
+        self, cluster: str, note_type: str, text: str, source_ids: list[int]
+    ) -> int:
+        """Insert a cross-paper note and its `derived_from` links atomically."""
+        async with self._db.connection() as conn:
+            new_id = await self.insert(conn, None, cluster, note_type, text)
+            for src in source_ids:
+                await conn.execute(
+                    "INSERT OR IGNORE INTO note_links (from_note_id, to_note_id, kind) "
+                    "VALUES (?, ?, 'derived_from')",
+                    (new_id, src),
+                )
+            await conn.commit()
+        return new_id
+
+    async def ids_by_cluster_and_type(
+        self, cluster: str | None
+    ) -> tuple[dict[str, dict[str, list[int]]], set[int]]:
+        """`({cluster: {type: [note ids]}}, ids of notes anchored by derived_from links)`."""
+        query = "SELECT cluster, type, id FROM notes WHERE cluster IS NOT NULL"
+        params: list[Any] = []
+        if cluster is not None:
+            query += " AND cluster = ?"
+            params.append(cluster)
+        async with self._db.connection() as conn:
+            cur = await conn.execute(query, params)
+            rows = await cur.fetchall()
+            cur = await conn.execute(
+                "SELECT from_note_id FROM note_links WHERE kind = 'derived_from'"
+            )
+            anchored = {r["from_note_id"] for r in await cur.fetchall()}
+        by_cluster: dict[str, dict[str, list[int]]] = {}
+        for r in rows:
+            by_cluster.setdefault(r["cluster"], {}).setdefault(r["type"], []).append(r["id"])
+        return by_cluster, anchored

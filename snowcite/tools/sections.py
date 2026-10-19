@@ -10,47 +10,11 @@ JSON like the v0.2 path).
 free-form text.
 """
 
-import json
 from typing import Any
 
 from snowcite.app import mcp
 from snowcite.container import container
 from snowcite.domain.types import SectionStatus
-
-
-def _normalize_scope(scope: dict[str, Any] | None) -> dict[str, list[str]]:
-    """Coerce arbitrary scope payloads into the canonical 3-key shape.
-
-    Unknown keys are dropped silently — they'd just confuse `research_section`.
-    Empty lists are kept (they signal "intentionally empty" vs missing).
-    """
-    scope = scope or {}
-    out: dict[str, list[str]] = {"clusters": [], "keywords": [], "questions": []}
-    for key in out:
-        val = scope.get(key, [])
-        if isinstance(val, list):
-            out[key] = [str(v) for v in val if isinstance(v, str | int | float)]
-    return out
-
-
-def _row_to_section(row: Any) -> dict[str, Any]:
-    return {
-        "id": row["id"],
-        "title": row["title"],
-        "scope": json.loads(row["scope_json"]),
-        "draft": row["draft"],
-        "status": row["status"],
-        "parent_id": row["parent_id"],
-        "position": row["position"],
-        "severity": {
-            "blockers": row["blockers"],
-            "should_fix": row["should_fix"],
-            "nits": row["nits"],
-        },
-        "critique_iterations": row["critique_iterations"],
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
-    }
 
 
 @mcp.tool()
@@ -67,25 +31,7 @@ async def create_section(
     critique loop. Unknown keys are dropped.
     `position` orders siblings; if omitted, appended after current siblings.
     """
-    if not title.strip():
-        return {"error": "title is empty"}
-    norm_scope = _normalize_scope(scope)
-    async with container.db.connection() as conn:
-        if position is None:
-            cur = await conn.execute(
-                "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM sections WHERE parent_id IS ?",
-                (parent_id,),
-            )
-            position = (await cur.fetchone())["next"]
-        cur = await conn.execute(
-            """
-            INSERT INTO sections (title, scope_json, parent_id, position)
-            VALUES (?, ?, ?, ?)
-            """,
-            (title.strip(), json.dumps(norm_scope), parent_id, position),
-        )
-        await conn.commit()
-        return {"id": cur.lastrowid}
+    return await container.section_service.create(title, scope, parent_id, position)
 
 
 @mcp.tool()
@@ -99,73 +45,19 @@ async def bulk_create_sections(sections: list[dict[str, Any]]) -> dict[str, Any]
     Use after Claude proposes an outline from `review_summary` clusters and
     the user approves — single round-trip for the whole structure.
     """
-    inserted_ids: list[int] = []
-    errors: list[dict[str, Any]] = []
-    async with container.db.connection() as conn:
-        # Cache next-position per parent so a bulk insert without explicit
-        # positions packs them sequentially instead of all colliding at
-        # MAX+1 of the pre-call state.
-        next_pos: dict[int | None, int] = {}
-        for idx, item in enumerate(sections):
-            title = item.get("title", "")
-            if not isinstance(title, str) or not title.strip():
-                errors.append({"index": idx, "error": "title is empty"})
-                continue
-            parent_id = item.get("parent_id")
-            position = item.get("position")
-            if position is None:
-                if parent_id not in next_pos:
-                    cur = await conn.execute(
-                        "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM sections "
-                        "WHERE parent_id IS ?",
-                        (parent_id,),
-                    )
-                    next_pos[parent_id] = (await cur.fetchone())["next"]
-                position = next_pos[parent_id]
-                next_pos[parent_id] += 1
-            scope = _normalize_scope(item.get("scope"))
-            cur = await conn.execute(
-                """
-                INSERT INTO sections (title, scope_json, parent_id, position)
-                VALUES (?, ?, ?, ?)
-                """,
-                (title.strip(), json.dumps(scope), parent_id, position),
-            )
-            inserted_ids.append(cur.lastrowid)
-        await conn.commit()
-    return {"inserted": len(inserted_ids), "ids": inserted_ids, "errors": errors}
+    return await container.section_service.bulk_create(sections)
 
 
 @mcp.tool()
 async def list_sections() -> list[dict[str, Any]]:
     """All sections, ordered by (parent_id, position). Hierarchical via parent_id."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute(
-            """
-            SELECT id, title, scope_json, draft, status, parent_id, position,
-                   blockers, should_fix, nits, critique_iterations, created_at, updated_at
-            FROM sections
-            ORDER BY COALESCE(parent_id, 0), position, id
-            """
-        )
-        rows = await cur.fetchall()
-    return [_row_to_section(r) for r in rows]
+    return await container.section_service.list_all()
 
 
 @mcp.tool()
 async def get_section(section_id: int) -> dict[str, Any] | None:
     """Full record for one section, or None if missing."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute(
-            """
-            SELECT id, title, scope_json, draft, status, parent_id, position,
-                   blockers, should_fix, nits, critique_iterations, created_at, updated_at
-            FROM sections WHERE id = ?
-            """,
-            (section_id,),
-        )
-        row = await cur.fetchone()
-    return _row_to_section(row) if row else None
+    return await container.section_service.get(section_id)
 
 
 @mcp.tool()
@@ -184,53 +76,15 @@ async def update_section(
     `critique_section` / `revise_section` (Phase 5), not by this tool.
     Setting `parent_id` does not validate against cycles — keep the tree sane.
     """
-    if all(v is None for v in (title, scope, draft, status, parent_id, position)):
-        return {"error": "no fields to update"}
-
-    sets: list[str] = []
-    params: list[Any] = []
-    if title is not None:
-        if not title.strip():
-            return {"error": "title is empty"}
-        sets.append("title = ?")
-        params.append(title.strip())
-    if scope is not None:
-        sets.append("scope_json = ?")
-        params.append(json.dumps(_normalize_scope(scope)))
-    if draft is not None:
-        sets.append("draft = ?")
-        params.append(draft)
-    if status is not None:
-        sets.append("status = ?")
-        params.append(status)
-    if parent_id is not None:
-        if parent_id == section_id:
-            return {"error": "section cannot be its own parent"}
-        sets.append("parent_id = ?")
-        params.append(parent_id)
-    if position is not None:
-        sets.append("position = ?")
-        params.append(position)
-    sets.append("updated_at = CURRENT_TIMESTAMP")
-    params.append(section_id)
-
-    async with container.db.connection() as conn:
-        # `sets` is built only from the fixed allowlist above.
-        sql = f"UPDATE sections SET {', '.join(sets)} WHERE id = ?"  # noqa: S608
-        cur = await conn.execute(sql, params)
-        if cur.rowcount == 0:
-            return {"error": f"section {section_id} not found"}
-        await conn.commit()
-    return {"updated": True, "id": section_id}
+    return await container.section_service.update(
+        section_id, title, scope, draft, status, parent_id, position
+    )
 
 
 @mcp.tool()
 async def delete_section(section_id: int) -> dict[str, Any]:
     """Remove a section and all descendants (cascade via parent_id FK)."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute("DELETE FROM sections WHERE id = ?", (section_id,))
-        await conn.commit()
-    return {"deleted": cur.rowcount}
+    return await container.section_service.delete(section_id)
 
 
 @mcp.tool()
@@ -241,19 +95,4 @@ async def get_outline_inputs() -> dict[str, Any]:
     structure without three separate round-trips. Designed to be the single
     read before `bulk_create_sections`.
     """
-    async with container.db.connection() as conn:
-        cur = await conn.execute("SELECT content FROM thesis WHERE id = 1")
-        row = await cur.fetchone()
-        thesis = row["content"] if row else None
-
-        cur = await conn.execute("SELECT clusters_json FROM review_summary WHERE id = 1")
-        row = await cur.fetchone()
-        clusters = json.loads(row["clusters_json"]) if row else []
-
-        cur = await conn.execute(
-            "SELECT criteria_text FROM review_criteria ORDER BY id DESC LIMIT 1"
-        )
-        row = await cur.fetchone()
-        criteria = row["criteria_text"] if row else None
-
-    return {"thesis": thesis, "clusters": clusters, "criteria": criteria}
+    return await container.section_service.outline_inputs()
