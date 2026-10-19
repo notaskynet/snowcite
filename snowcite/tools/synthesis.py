@@ -16,8 +16,8 @@ import json
 from typing import Any
 
 from snowcite.app import mcp
-from snowcite.db import get_connection
-from snowcite.types import CROSS_PAPER_NOTE_TYPES, NoteType
+from snowcite.container import container
+from snowcite.domain.types import CROSS_PAPER_NOTE_TYPES, NoteType
 
 
 # Threshold for "thin" cluster: fewer per-paper notes than this is a hint that
@@ -39,7 +39,7 @@ async def get_cluster_notes(cluster: str) -> dict[str, Any]:
       `derived_from` source ids.
     - `counts`: per-type counts in the cluster.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             """
             SELECT n.id, n.paper_id, n.type, n.text, n.created_at,
@@ -123,7 +123,7 @@ async def add_synthesis_note(
     if not derived_from_note_ids:
         return {"error": "derived_from_note_ids cannot be empty — synthesis must cite sources"}
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         # Validate that all source ids exist and are per-paper.
         placeholders = ",".join("?" * len(derived_from_note_ids))
         cur = await conn.execute(
@@ -174,7 +174,7 @@ async def find_gaps(cluster: str | None = None) -> dict[str, Any]:
     With `cluster` filters to that one cluster; otherwise scans all clusters
     that have any notes.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         query = "SELECT cluster, type, id FROM notes WHERE cluster IS NOT NULL"
         params: list[Any] = []
         if cluster is not None:
@@ -222,7 +222,7 @@ async def find_gaps(cluster: str | None = None) -> dict[str, Any]:
     # Cross-check cluster names against review_summary if available.
     unknown_clusters: list[str] = []
     if cluster is None and by_cluster:
-        async with get_connection() as conn:
+        async with container.db.connection() as conn:
             cur = await conn.execute("SELECT clusters_json FROM review_summary WHERE id = 1")
             row = await cur.fetchone()
         if row is not None:

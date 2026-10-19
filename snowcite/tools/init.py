@@ -14,8 +14,8 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from snowcite.app import mcp
-from snowcite.db import get_connection, init_db
-from snowcite.projects import create_project_dir, find_project_root, migrate_legacy_db
+from snowcite.container import container
+from snowcite.storage.projects import create_project_dir, find_project_root, migrate_legacy_db
 
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
@@ -70,7 +70,7 @@ _SETTINGS_ALLOWLIST = [
 
 async def _load_metadata() -> dict[str, Any]:
     """Read the singleton project_metadata row. Returns {} if missing."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT * FROM project_metadata WHERE id = 1",
         )
@@ -106,7 +106,7 @@ async def _save_metadata(metadata: dict[str, Any]) -> None:
         f"VALUES ({', '.join(placeholders)}) "
         f"ON CONFLICT(id) DO UPDATE SET {', '.join(updates)}"
     )
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         await conn.execute(sql, (*known.values(), extra_json))
         await conn.commit()
 
@@ -262,7 +262,7 @@ async def init_project(
     migrated = migrate_legacy_db() if migrate_from_legacy else False
 
     # 2. DB + schema (runs migrations too).
-    await init_db()
+    await container.db.init()
 
     # 3. Persist metadata. Merge into existing if update=True and no metadata kwarg.
     if metadata:

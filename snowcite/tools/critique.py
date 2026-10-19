@@ -22,7 +22,7 @@ import json
 from typing import Any
 
 from snowcite.app import mcp
-from snowcite.db import get_connection
+from snowcite.container import container
 
 
 _MAX_CRITIQUE_ITERATIONS = 2
@@ -43,7 +43,7 @@ async def get_section_critique_inputs(section_id: int) -> dict[str, Any]:
     Claude reads this, generates `[{severity, type, text, suggested_action}]`
     issues, and passes them to `record_section_critique`.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             """
             SELECT id, title, scope_json, draft, status, parent_id, position,
@@ -124,7 +124,7 @@ async def record_section_critique(
             return {"error": f"issues[{idx}].severity must be one of {sorted(counts)}; got {sev!r}"}
         counts[sev] += 1
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT critique_iterations FROM sections WHERE id = ?", (section_id,)
         )
@@ -186,7 +186,7 @@ async def revise_section(
     nits).
     """
     new_status = "done" if mark_done else "drafting"
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             """
             UPDATE sections

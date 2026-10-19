@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.review import set_review_criteria, set_review_status
 from snowcite.tools.session import get_session_state
 from snowcite.tools.writing import (
@@ -47,7 +47,7 @@ async def test_phase_criteria_set_after_setting_criteria(tmp_project: Path):
 @pytest.mark.asyncio
 async def test_phase_reviewing_with_unreviewed_papers(tmp_project: Path):
     await set_review_criteria("...")
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(source="arxiv", source_id="1", title="P"),
             Paper(source="arxiv", source_id="2", title="Q"),
@@ -59,7 +59,7 @@ async def test_phase_reviewing_with_unreviewed_papers(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_phase_snowballing_after_all_reviewed(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(source="arxiv", source_id="1", title="P"),
             Paper(source="arxiv", source_id="2", title="Q"),
@@ -113,7 +113,7 @@ async def test_phase_polishing_when_all_sections_polished(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_last_actions_reflect_review_history(tmp_project: Path):
-    await persist_papers([Paper(source="arxiv", source_id="x", title="T")])
+    await container.papers.persist([Paper(source="arxiv", source_id="x", title="T")])
     await set_review_status([1], "approved", reason="matches X", reviewed_by="auto_high")
     r = await get_session_state()
     assert len(r["last_actions"]) == 1

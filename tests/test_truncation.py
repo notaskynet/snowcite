@@ -1,6 +1,6 @@
 """Abstract truncation helper — drives T1's "don't leak abstracts to context" rule."""
 
-from snowcite.sources.base import Paper
+from snowcite.domain.models import Paper
 from snowcite.tools.search import _compact_paper, _truncate_abstract
 
 

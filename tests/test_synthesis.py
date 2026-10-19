@@ -5,9 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.db import get_connection
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.notes import add_note
 from snowcite.tools.synthesis import (
     add_synthesis_note,
@@ -17,7 +16,7 @@ from snowcite.tools.synthesis import (
 
 
 async def _seed_two_papers() -> tuple[int, int]:
-    res = await persist_papers(
+    res = await container.papers.persist(
         [
             Paper(source="arxiv", source_id="a", title="A", year=2023),
             Paper(source="arxiv", source_id="b", title="B", year=2024),
@@ -131,7 +130,7 @@ async def test_find_gaps_unanchored_contradiction(tmp_project: Path):
     await add_note(type="claim", text="a", paper_id=p1, cluster="X")
     await add_note(type="finding", text="b", paper_id=p1, cluster="X")
     await add_note(type="claim", text="c", paper_id=p2, cluster="X")
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         await conn.execute(
             "INSERT INTO notes (paper_id, cluster, type, text) "
             "VALUES (NULL, 'X', 'contradiction', 'A vs B')"
@@ -146,7 +145,7 @@ async def test_find_gaps_unanchored_contradiction(tmp_project: Path):
 async def test_find_gaps_unknown_cluster_in_summary(tmp_project: Path):
     p1, _ = await _seed_two_papers()
     await add_note(type="claim", text="x", paper_id=p1, cluster="typo_cluster")
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         await conn.execute(
             "INSERT INTO review_summary "
             "(id, summary, clusters_json, counts_snapshot_json, stale) "

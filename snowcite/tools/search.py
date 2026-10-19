@@ -6,15 +6,14 @@ from typing import Any
 import aiosqlite
 
 from snowcite.app import mcp
-from snowcite.db import get_connection
-from snowcite.dedup import find_title_match, normalize_title
+from snowcite.container import container
+from snowcite.domain.dedup import find_title_match, normalize_title
+from snowcite.domain.models import Paper, PersistResult
+from snowcite.domain.types import Direction, Source, Status
 from snowcite.logging import log
-from snowcite.persistence import PersistResult, persist_papers
-from snowcite.projects import NoProjectError
 from snowcite.sources import arxiv_client, crossref, openalex, pubmed, semantic_scholar
-from snowcite.sources.base import Paper
+from snowcite.storage.projects import NoProjectError
 from snowcite.tools.common import paper_row_to_dict
-from snowcite.types import Direction, Source, Status
 
 
 def _truncate_abstract(abstract: str | None, max_chars: int) -> str | None:
@@ -72,7 +71,7 @@ async def _discipline_from_metadata() -> str | None:
     programmer errors (AttributeError etc.) surface normally.
     """
     try:
-        async with get_connection() as conn:
+        async with container.db.connection() as conn:
             cur = await conn.execute("SELECT discipline FROM project_metadata WHERE id = 1")
             row = await cur.fetchone()
     except (NoProjectError, aiosqlite.Error, OSError):
@@ -149,7 +148,7 @@ async def search_papers(
     deduped = _dedup_within_batch(all_papers)
 
     if auto_save:
-        persisted: PersistResult = await persist_papers(deduped)
+        persisted: PersistResult = await container.papers.persist(deduped)
         result: dict[str, Any] = {
             "saved": persisted["saved"],
             "duplicates": persisted["duplicates"],
@@ -173,7 +172,7 @@ async def save_papers(papers: list[dict[str, Any]]) -> dict[str, Any]:
     or imported data.
     """
     validated = [Paper.model_validate(p) for p in papers]
-    return dict(await persist_papers(validated))
+    return dict(await container.papers.persist(validated))
 
 
 # ─── Read tools ─────────────────────────────────────────────────────────────
@@ -217,7 +216,7 @@ async def get_saved_papers(
     query += " ORDER BY p.id LIMIT ? OFFSET ?"
     params.extend([limit, offset])
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()
     return [paper_row_to_dict(r) for r in rows]
@@ -226,7 +225,7 @@ async def get_saved_papers(
 @mcp.tool()
 async def get_paper_details(paper_id: int) -> dict[str, Any]:
     """Full paper record by id, including review status and citation counts."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             """
             SELECT p.*, r.status AS review_status, r.reason AS review_reason,
@@ -273,7 +272,7 @@ async def expand_citations(
     {saved, duplicates, new_ids, titles}. With auto_save=False, returns full paper list
     with abstracts trimmed to abstract_max_chars (0 = omitted).
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT source, source_id, doi FROM papers WHERE id = ?",
             (paper_id,),
@@ -301,7 +300,7 @@ async def expand_citations(
     related = await semantic_scholar.get_related(ss_id, direction, limit)
 
     if auto_save:
-        persisted = await persist_papers(related)
+        persisted = await container.papers.persist(related)
         return {
             "saved": persisted["saved"],
             "duplicates": persisted["duplicates"],

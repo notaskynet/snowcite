@@ -1,6 +1,6 @@
 """Dedup helpers — title normalization, DOI normalization, fuzzy matching."""
 
-from snowcite.dedup import find_title_match, normalize_doi, normalize_title
+from snowcite.domain.dedup import find_title_match, normalize_doi, normalize_title
 
 
 def test_normalize_title_strips_punct_and_case():

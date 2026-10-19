@@ -9,8 +9,8 @@ import json
 import re
 from typing import Any
 
-from snowcite.db import get_connection
-from snowcite.types import ArtifactRecord, ArtifactType
+from snowcite.container import container
+from snowcite.domain.types import ArtifactRecord, ArtifactType
 
 
 _FILENAME_LIKE_RE = re.compile(r"^[\w\-.]+$")
@@ -26,7 +26,7 @@ async def save_artifact(
     metadata: dict[str, Any] | None = None,
 ) -> int:
     """Insert an artifact; returns its id."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             """
             INSERT INTO artifacts (type, label, source_path, content, summary, metadata_json, included)
@@ -39,7 +39,7 @@ async def save_artifact(
 
 
 async def load_artifact(artifact_id: int) -> ArtifactRecord | None:
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT id, type, label, source_path, content, summary, metadata_json, "
             "included, created_at FROM artifacts WHERE id = ?",
@@ -66,7 +66,7 @@ async def list_artifacts(
     if included_only:
         query += " AND included = 1"
     query += " ORDER BY id"
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()
     return [_row_to_record(r) for r in rows]
@@ -77,7 +77,7 @@ async def load_artifacts_by_ids(artifact_ids: list[int]) -> list[ArtifactRecord]
     if not artifact_ids:
         return []
     placeholders = ",".join("?" * len(artifact_ids))
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             f"""
             SELECT id, type, label, source_path, content, summary, metadata_json,
@@ -93,7 +93,7 @@ async def load_artifacts_by_ids(artifact_ids: list[int]) -> list[ArtifactRecord]
 
 async def delete_artifact(artifact_id: int) -> bool:
     """Hard delete. Returns True if a row was removed."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("DELETE FROM artifacts WHERE id = ?", (artifact_id,))
         await conn.commit()
         return cur.rowcount > 0
@@ -101,7 +101,7 @@ async def delete_artifact(artifact_id: int) -> bool:
 
 async def set_included(artifact_id: int, included: bool) -> bool:
     """Toggle `included`. Excluded artifacts are ignored by the writing pipeline."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "UPDATE artifacts SET included = ? WHERE id = ?",
             (1 if included else 0, artifact_id),

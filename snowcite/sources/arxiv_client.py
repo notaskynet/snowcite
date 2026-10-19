@@ -4,8 +4,8 @@ import asyncio
 
 import arxiv
 
-from snowcite.dedup import normalize_doi
-from snowcite.sources.base import Paper
+from snowcite.domain.dedup import normalize_doi
+from snowcite.domain.models import Paper
 
 
 def _to_paper(result: arxiv.Result) -> Paper:

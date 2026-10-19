@@ -11,9 +11,9 @@ from typing import Any
 import aiosqlite
 
 from snowcite.app import mcp
-from snowcite.db import get_connection
-from snowcite.projects import find_project_root
-from snowcite.types import Phase
+from snowcite.container import container
+from snowcite.domain.types import Phase
+from snowcite.storage.projects import find_project_root
 
 
 async def _infer_phase(conn: aiosqlite.Connection) -> Phase:  # noqa: PLR0911 — one return per workflow phase
@@ -94,7 +94,7 @@ async def get_session_state() -> dict[str, Any]:
             "project_active": False,
         }
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         phase = await _infer_phase(conn)
 
         cur = await conn.execute("SELECT COUNT(*) FROM papers")

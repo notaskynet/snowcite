@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.projects import (
+from snowcite.storage.projects import (
     NoProjectError,
     create_project_dir,
     find_project_root,

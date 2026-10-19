@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.critique import (
     get_section_critique_inputs,
     record_section_critique,
@@ -19,7 +19,7 @@ from snowcite.tools.sections import create_section, get_section
 @pytest.mark.asyncio
 async def test_get_section_critique_inputs_bundles_data(tmp_project: Path):
     sec = await create_section(title="Methods", scope={"clusters": ["A", "B"]})
-    await persist_papers([Paper(source="arxiv", source_id="x", title="P", year=2024)])
+    await container.papers.persist([Paper(source="arxiv", source_id="x", title="P", year=2024)])
     await link_paper_to_section(paper_id=1, section_id=sec["id"])
     await add_note(type="claim", text="c1", paper_id=1, cluster="A")
     await add_note(type="finding", text="f1", paper_id=1, cluster="A")

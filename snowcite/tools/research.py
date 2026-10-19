@@ -17,7 +17,7 @@ import json
 from typing import Any
 
 from snowcite.app import mcp
-from snowcite.db import get_connection
+from snowcite.container import container
 from snowcite.tools.search import search_papers
 
 
@@ -38,7 +38,7 @@ async def research_section(
     Sections without keywords/questions return early — set scope first via
     `update_section`.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT scope_json FROM sections WHERE id = ?", (section_id,))
         row = await cur.fetchone()
     if row is None:
@@ -76,7 +76,7 @@ async def research_section(
             failed_sources.add(f)
 
     if all_new_ids:
-        async with get_connection() as conn:
+        async with container.db.connection() as conn:
             for pid, q in _zip_ids_with_queries(per_query):
                 await conn.execute(
                     "INSERT OR IGNORE INTO paper_section_links "
@@ -114,7 +114,7 @@ async def link_paper_to_section(
     `research_section` only links *newly discovered* papers, so existing ones
     need this hook.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         # Validate both ends to give a clear error rather than a foreign-key bark.
         cur = await conn.execute("SELECT 1 FROM papers WHERE id = ?", (paper_id,))
         if await cur.fetchone() is None:
@@ -134,7 +134,7 @@ async def link_paper_to_section(
 @mcp.tool()
 async def unlink_paper_from_section(paper_id: int, section_id: int) -> dict[str, Any]:
     """Remove a paper↔section link without touching the paper itself."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "DELETE FROM paper_section_links WHERE paper_id = ? AND section_id = ?",
             (paper_id, section_id),
@@ -147,7 +147,7 @@ async def unlink_paper_from_section(paper_id: int, section_id: int) -> dict[str,
 async def get_section_papers(section_id: int) -> list[dict[str, Any]]:
     """Papers linked to this section, with current review status and the query
     that surfaced them (if any). Newest first."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             """
             SELECT p.id, p.title, p.year, p.venue, p.doi,

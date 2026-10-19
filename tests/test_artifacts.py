@@ -12,12 +12,12 @@ from snowcite.artifacts import (
     save_artifact,
     set_included,
 )
-from snowcite.persistence import persist_papers
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.rendering import (
     include_code,
     primary_sources_appendix,
 )
-from snowcite.sources.base import Paper
 from snowcite.tools.artifacts import (
     add_artifact_inline,
     delete_artifact,
@@ -154,7 +154,7 @@ async def test_delete_artifact(tmp_project: Path):
 @pytest.mark.asyncio
 async def test_prepare_section_for_review_includes_artifacts(tmp_project: Path):
     # One paper, two artifacts (one excluded), one section tying them together.
-    await persist_papers([Paper(source="arxiv", source_id="1", title="T", abstract="x")])
+    await container.papers.persist([Paper(source="arxiv", source_id="1", title="T", abstract="x")])
     aid_active = await save_artifact(type="interview", label="P01", content="Q: ...")
     aid_excluded = await save_artifact(type="interview", label="P02", content="Q: ...")
     await set_included(aid_excluded, False)

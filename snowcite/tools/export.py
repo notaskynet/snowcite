@@ -12,9 +12,10 @@ from typing import Any
 
 from snowcite.app import mcp
 from snowcite.bibliography import build_bibtex_document
+from snowcite.container import container
+from snowcite.domain.models import ApprovedPaper
 from snowcite.logging import log
-from snowcite.persistence import ApprovedPaper, load_approved_papers
-from snowcite.projects import require_project_root
+from snowcite.storage.projects import require_project_root
 
 
 _EXPORT_TIMEOUT_SECONDS = 120
@@ -30,7 +31,7 @@ def _default_output_path(name: str) -> Path:
 @mcp.tool()
 async def export_bibtex(output_path: str | None = None) -> dict[str, Any]:
     """Write a .bib file for the approved set. Reuses per-paper bibtex when present."""
-    papers = await load_approved_papers()
+    papers = await container.papers.load_approved()
     path = Path(output_path) if output_path else _default_output_path("references.bib")
     path.write_text(build_bibtex_document(list(papers)) + "\n", encoding="utf-8")
     return {"path": str(path), "entries": len(papers)}
@@ -62,7 +63,7 @@ def _ris_entry(paper: ApprovedPaper) -> str:
 @mcp.tool()
 async def export_ris(output_path: str | None = None) -> dict[str, Any]:
     """Write a RIS file for Mendeley / EndNote import."""
-    papers = await load_approved_papers()
+    papers = await container.papers.load_approved()
     body = "\n\n".join(_ris_entry(p) for p in papers) + "\n"
     path = Path(output_path) if output_path else _default_output_path("references.ris")
     path.write_text(body, encoding="utf-8")

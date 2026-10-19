@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.init import init_project
 from snowcite.tools.review_quality import prepare_section_for_review
 from snowcite.tools.writing import approve_outline, save_outline, save_section
@@ -22,7 +22,7 @@ async def test_prepare_missing_section_returns_error(tmp_project: Path):
 @pytest.mark.asyncio
 async def test_prepare_bundles_section_and_assigned_papers(tmp_project: Path):
     # Seed two papers, approve one, reference it from the outline.
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(
                 source="openalex",
@@ -73,7 +73,7 @@ async def test_prepare_bundles_section_and_assigned_papers(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_prepare_can_omit_abstracts(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(
                 source="openalex",

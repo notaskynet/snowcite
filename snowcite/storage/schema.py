@@ -1,11 +1,6 @@
-import asyncio
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from pathlib import Path
+"""SQLite schema and additive migrations for a project's `papers.db`."""
 
 import aiosqlite
-
-from snowcite.projects import get_db_path
 
 
 SCHEMA = """
@@ -243,20 +238,6 @@ _TARGET_METRIC_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 
-# Paths whose schema we've already applied this process + an asyncio.Lock per
-# path to serialize init/migration under concurrent `get_connection()` callers.
-_initialized: set[Path] = set()
-_init_locks: dict[Path, asyncio.Lock] = {}
-
-
-def _lock_for(path: Path) -> asyncio.Lock:
-    lock = _init_locks.get(path)
-    if lock is None:
-        lock = asyncio.Lock()
-        _init_locks[path] = lock
-    return lock
-
-
 async def _migrate_reviews_confidence(conn: aiosqlite.Connection) -> None:
     """T27: broaden `reviewed_by` from {auto,user} to {auto_high,auto_low,user}.
 
@@ -322,39 +303,10 @@ async def _migrate_project_metadata_add_columns(conn: aiosqlite.Connection) -> N
             await conn.execute(f"ALTER TABLE project_metadata ADD COLUMN {name} {coltype}")
 
 
-async def init_db(db_path: Path | None = None) -> None:
-    """Create schema in the active project's DB (or at `db_path` if given).
-
-    Idempotent. Concurrent callers for the same path are serialized via a
-    per-path `asyncio.Lock` so migrations can't race.
-    """
-    path = db_path if db_path is not None else get_db_path()
-    resolved = path.resolve()
-
-    async with _lock_for(resolved):
-        if resolved in _initialized:
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        async with aiosqlite.connect(path) as conn:
-            await _migrate_reviews_confidence(conn)
-            await conn.executescript(SCHEMA)
-            await _migrate_sections_add_columns(conn)
-            await _migrate_project_metadata_add_columns(conn)
-            await conn.commit()
-        _initialized.add(resolved)
-
-
-@asynccontextmanager
-async def get_connection() -> AsyncIterator[aiosqlite.Connection]:
-    """Async connection to the active project's DB.
-
-    Raises `NoProjectError` if no `.snowcite/` exists in cwd or any parent.
-    Applies schema lazily on first access per process (per path).
-    """
-    path = get_db_path()
-    if path.resolve() not in _initialized:
-        await init_db(path)
-    async with aiosqlite.connect(path) as conn:
-        await conn.execute("PRAGMA foreign_keys = ON")
-        conn.row_factory = aiosqlite.Row
-        yield conn
+async def apply_schema(conn: aiosqlite.Connection) -> None:
+    """Bring `conn`'s database up to the current schema. Idempotent."""
+    await _migrate_reviews_confidence(conn)
+    await conn.executescript(SCHEMA)
+    await _migrate_sections_add_columns(conn)
+    await _migrate_project_metadata_add_columns(conn)
+    await conn.commit()

@@ -18,12 +18,11 @@ from snowcite.bibliography import (
     generate_hayagriva,
     rewrite_cite_refs,
 )
-from snowcite.db import get_connection
+from snowcite.container import container
+from snowcite.domain.types import Backend
 from snowcite.logging import log
-from snowcite.persistence import load_approved_papers, load_document_sections
-from snowcite.projects import require_project_root
+from snowcite.storage.projects import require_project_root
 from snowcite.templates import render_template
-from snowcite.types import Backend
 
 
 _EXT_TO_BACKEND: dict[str, Backend] = {".tex": "latex", ".typ": "typst"}
@@ -73,9 +72,9 @@ async def write_document(
     """
     out = Path(output_dir) if output_dir else require_project_root()
     out.mkdir(parents=True, exist_ok=True)
-    papers = await load_approved_papers()
+    papers = await container.papers.load_approved()
     if sections is None:
-        sections = await load_document_sections()
+        sections = await container.sections.load_document_sections()
 
     # Rewrite `[N]` paper-id cites in each section to the backend's cite
     # syntax, using the same cite keys the bibliography will publish. Sections
@@ -193,7 +192,7 @@ async def compile_pdf(doc_path: str) -> dict[str, Any]:
 
 async def _load_project_defaults() -> dict[str, Any]:
     """Pull title/author/backend/standard/language + targets from project_metadata."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT * FROM project_metadata WHERE id = 1")
         row = await cur.fetchone()
     return {k: row[k] for k in row.keys()} if row else {}
@@ -228,7 +227,7 @@ async def estimate_pages(
     title = "Draft preview"
     author = defaults.get("author") or "Author"
 
-    sections = await load_document_sections()
+    sections = await container.sections.load_document_sections()
     if not sections:
         return {
             "pages": None,
@@ -301,7 +300,7 @@ async def set_backend(
        `outline` and `skeleton` are preserved — you re-expand sections under
        the new backend.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT backend FROM project_metadata WHERE id = 1")
         row = await cur.fetchone()
         current = row["backend"] if row else None

@@ -4,11 +4,11 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from snowcite.dedup import normalize_doi
+from snowcite.domain.dedup import normalize_doi
+from snowcite.domain.models import Paper
 from snowcite.logging import log
 from snowcite.settings import settings
 from snowcite.sources._http import http_get
-from snowcite.sources.base import Paper
 
 
 BASE_URL = "https://api.openalex.org"

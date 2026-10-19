@@ -14,8 +14,8 @@ import json
 from typing import Any
 
 from snowcite.app import mcp
-from snowcite.db import get_connection
-from snowcite.types import SectionStatus
+from snowcite.container import container
+from snowcite.domain.types import SectionStatus
 
 
 def _normalize_scope(scope: dict[str, Any] | None) -> dict[str, list[str]]:
@@ -70,7 +70,7 @@ async def create_section(
     if not title.strip():
         return {"error": "title is empty"}
     norm_scope = _normalize_scope(scope)
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         if position is None:
             cur = await conn.execute(
                 "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM sections WHERE parent_id IS ?",
@@ -101,7 +101,7 @@ async def bulk_create_sections(sections: list[dict[str, Any]]) -> dict[str, Any]
     """
     inserted_ids: list[int] = []
     errors: list[dict[str, Any]] = []
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         # Cache next-position per parent so a bulk insert without explicit
         # positions packs them sequentially instead of all colliding at
         # MAX+1 of the pre-call state.
@@ -139,7 +139,7 @@ async def bulk_create_sections(sections: list[dict[str, Any]]) -> dict[str, Any]
 @mcp.tool()
 async def list_sections() -> list[dict[str, Any]]:
     """All sections, ordered by (parent_id, position). Hierarchical via parent_id."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             """
             SELECT id, title, scope_json, draft, status, parent_id, position,
@@ -155,7 +155,7 @@ async def list_sections() -> list[dict[str, Any]]:
 @mcp.tool()
 async def get_section(section_id: int) -> dict[str, Any] | None:
     """Full record for one section, or None if missing."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             """
             SELECT id, title, scope_json, draft, status, parent_id, position,
@@ -214,7 +214,7 @@ async def update_section(
     sets.append("updated_at = CURRENT_TIMESTAMP")
     params.append(section_id)
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         # `sets` is built only from the fixed allowlist above.
         sql = f"UPDATE sections SET {', '.join(sets)} WHERE id = ?"  # noqa: S608
         cur = await conn.execute(sql, params)
@@ -227,7 +227,7 @@ async def update_section(
 @mcp.tool()
 async def delete_section(section_id: int) -> dict[str, Any]:
     """Remove a section and all descendants (cascade via parent_id FK)."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("DELETE FROM sections WHERE id = ?", (section_id,))
         await conn.commit()
     return {"deleted": cur.rowcount}
@@ -241,7 +241,7 @@ async def get_outline_inputs() -> dict[str, Any]:
     structure without three separate round-trips. Designed to be the single
     read before `bulk_create_sections`.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT content FROM thesis WHERE id = 1")
         row = await cur.fetchone()
         thesis = row["content"] if row else None
