@@ -1,4 +1,4 @@
-"""Shared helpers for tool modules."""
+"""Row → dict mappers shared by repositories."""
 
 import json
 from typing import Any
