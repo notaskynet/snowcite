@@ -190,3 +190,46 @@ async def resolve_cluster_paper_ids(cluster: str) -> list[int] | dict[str, Any]:
             "available": [c.get("topic") for c in clusters_data],
         }
     return match.get("paper_ids") or []
+
+
+async def load_document_sections() -> list[dict[str, str]]:
+    """Sections to render, as `[{title, content}]` in document order.
+
+    v0.3 `sections` rows with a non-empty draft win (parents before their
+    children, siblings by position). When there are none, falls back to the
+    v0.2 `section_content` rows ordered by the outline.
+    """
+    async with get_connection() as conn:
+        cur = await conn.execute(
+            "SELECT id, title, draft, parent_id, position FROM sections ORDER BY position, id"
+        )
+        rows = await cur.fetchall()
+        cur = await conn.execute("SELECT sections_json FROM outline WHERE id = 1")
+        outline_row = await cur.fetchone()
+        cur = await conn.execute("SELECT name, content FROM section_content")
+        legacy = await cur.fetchall()
+
+    if any(r["draft"].strip() for r in rows):
+        children: dict[int | None, list[Any]] = {}
+        for r in rows:
+            children.setdefault(r["parent_id"], []).append(r)
+        ordered: list[dict[str, str]] = []
+
+        def walk(parent_id: int | None) -> None:
+            for r in children.get(parent_id, []):
+                if r["draft"].strip():
+                    ordered.append({"title": r["title"], "content": r["draft"]})
+                walk(r["id"])
+
+        walk(None)
+        return ordered
+
+    by_name = {r["name"]: r["content"] for r in legacy}
+    names: list[str] = []
+    if outline_row:
+        for entry in json.loads(outline_row["sections_json"]) or []:
+            name = entry.get("name") if isinstance(entry, dict) else entry
+            if name in by_name and name not in names:
+                names.append(name)
+    names += sorted(n for n in by_name if n not in names)
+    return [{"title": n, "content": by_name[n]} for n in names]

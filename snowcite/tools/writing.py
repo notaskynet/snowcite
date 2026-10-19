@@ -16,7 +16,11 @@ from snowcite.artifacts import (
     load_artifacts_by_ids,
 )
 from snowcite.db import get_connection
-from snowcite.persistence import load_approved_papers, load_papers_by_ids
+from snowcite.persistence import (
+    load_approved_papers,
+    load_document_sections,
+    load_papers_by_ids,
+)
 from snowcite.rendering import (
     include_code,
     overview_table,
@@ -350,16 +354,11 @@ async def gap_check(
     `sections` optionally restricts to a subset by name. With no sections in
     the DB, returns empty `gaps` and `total_gaps = 0`.
     """
-    async with get_connection() as conn:
-        if sections is None:
-            cur = await conn.execute("SELECT name, content FROM section_content")
-        else:
-            placeholders = ",".join("?" * len(sections))
-            cur = await conn.execute(
-                f"SELECT name, content FROM section_content WHERE name IN ({placeholders})",  # noqa: S608 — bound placeholder count
-                sections,
-            )
-        rows = await cur.fetchall()
+    rows = [
+        {"name": r["title"], "content": r["content"]}
+        for r in await load_document_sections()
+        if sections is None or r["title"] in sections
+    ]
 
     gaps: list[dict[str, Any]] = []
     total = 0
@@ -379,6 +378,26 @@ async def gap_check(
             gaps.append({"section": name, "count": len(uncited), "sentences": uncited})
             total += len(uncited)
     return {"total_gaps": total, "min_words": min_words, "gaps": gaps}
+
+
+def _rewrite_cite_ids(text: str, mapping: dict[int, int]) -> tuple[str, int]:
+    """Remap `[N]` ids in `text` through `mapping`; returns (new_text, refs_replaced)."""
+    replaced = 0
+
+    def _replace(match: re.Match[str]) -> str:
+        nonlocal replaced
+        # Preserve original separators so `[1, 2; 3]` keeps its shape.
+        out: list[str] = []
+        for part in re.split(r"([,;]\s*)", match.group(1)):
+            new = mapping.get(int(part)) if part.isdigit() else None
+            if new is None:
+                out.append(part)
+            else:
+                out.append(str(new))
+                replaced += 1
+        return "[" + "".join(out) + "]"
+
+    return _CITE_REF_RE.sub(_replace, text), replaced
 
 
 @mcp.tool()
@@ -426,30 +445,7 @@ async def rewrite_citations(
 
         for row in rows:
             name = row["name"]
-            original = row["content"] or ""
-            section_replaced = 0
-
-            def _replace(match: re.Match[str]) -> str:
-                nonlocal section_replaced
-                raw = match.group(1)
-                # Preserve original separators so `[1, 2; 3]` stays the same
-                # shape after rewriting — split by delimiter tokens.
-                parts = re.split(r"([,;]\s*)", raw)
-                out: list[str] = []
-                for part in parts:
-                    if re.fullmatch(r"\d+", part):
-                        old = int(part)
-                        new = int_mapping.get(old)
-                        if new is None:
-                            out.append(part)
-                        else:
-                            out.append(str(new))
-                            section_replaced += 1
-                    else:
-                        out.append(part)
-                return "[" + "".join(out) + "]"
-
-            new_content = _CITE_REF_RE.sub(_replace, original)
+            new_content, section_replaced = _rewrite_cite_ids(row["content"] or "", int_mapping)
             if section_replaced == 0:
                 continue
 
@@ -468,12 +464,26 @@ async def rewrite_citations(
                 {"name": name, "refs_replaced": section_replaced, "version": next_version}
             )
 
+        # v0.3 sections: drafts are matched by title.
+        cur = await conn.execute("SELECT id, title, draft FROM sections WHERE draft != ''")
+        draft_rows = [r for r in await cur.fetchall() if sections is None or r["title"] in sections]
+        for row in draft_rows:
+            new_draft, section_replaced = _rewrite_cite_ids(row["draft"], int_mapping)
+            if section_replaced == 0:
+                continue
+            await conn.execute(
+                "UPDATE sections SET draft = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (new_draft, row["id"]),
+            )
+            total_replaced += section_replaced
+            modified.append({"name": row["title"], "refs_replaced": section_replaced})
+
         await conn.commit()
 
     return {
         "modified": modified,
         "refs_replaced": total_replaced,
-        "sections_scanned": len(rows),
+        "sections_scanned": len(rows) + len(draft_rows),
     }
 
 

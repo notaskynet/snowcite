@@ -16,7 +16,7 @@ from snowcite.projects import find_project_root
 from snowcite.types import Phase
 
 
-async def _infer_phase(conn: aiosqlite.Connection) -> Phase:
+async def _infer_phase(conn: aiosqlite.Connection) -> Phase:  # noqa: PLR0911 — one return per workflow phase
     """Derive workflow phase from DB state.
 
     Walks later stages first — once we see expanded sections, we're 'writing'
@@ -30,6 +30,12 @@ async def _infer_phase(conn: aiosqlite.Connection) -> Phase:
         cur = await conn.execute("SELECT COUNT(*) FROM section_content WHERE polished = 0")
         unpolished = (await cur.fetchone())[0]
         return "writing" if unpolished > 0 else "polishing"
+    cur = await conn.execute(
+        "SELECT COUNT(*), SUM(status != 'done') FROM sections WHERE draft != ''"
+    )
+    drafted, unfinished = await cur.fetchone()
+    if drafted:
+        return "writing" if unfinished else "polishing"
 
     # Skeleton approved?
     cur = await conn.execute("SELECT approved FROM skeleton WHERE id = 1")
@@ -102,6 +108,12 @@ async def get_session_state() -> dict[str, Any]:
         counts["sections_written"] = (await cur.fetchone())[0]
         cur = await conn.execute("SELECT COUNT(*) FROM section_content WHERE polished = 1")
         counts["sections_polished"] = (await cur.fetchone())[0]
+        cur = await conn.execute(
+            "SELECT COUNT(*), SUM(status = 'done') FROM sections WHERE draft != ''"
+        )
+        drafted, done = await cur.fetchone()
+        counts["sections_written"] += drafted
+        counts["sections_polished"] += done or 0
 
         cur = await conn.execute(
             """
