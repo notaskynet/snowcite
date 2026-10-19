@@ -6,11 +6,13 @@ from snowcite.services import (
     BuildService,
     CitationService,
     NoteService,
+    ProjectService,
     ReviewService,
     SearchService,
     SectionService,
     SynthesisService,
 )
+from snowcite.services.claude_files import ClaudeFiles
 from snowcite.sources.arxiv_client import ArxivSource
 from snowcite.sources.crossref import CrossrefSource
 from snowcite.sources.openalex import OpenAlexSource
@@ -63,6 +65,7 @@ class Container:
             self.artifacts,
         )
         self.synthesis = SynthesisService(self.notes, self.reviews)
+        self.project_service = ProjectService(self.db, self.project, ClaudeFiles())
         self.artifact_service = ArtifactService(self.artifacts)
         self.citations = CitationService(self.sections)
         self.build = BuildService(self.papers, self.sections, self.project, Compiler())
