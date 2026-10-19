@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from snowcite.domain import rules
+from snowcite.services.search import SearchService
 from snowcite.storage.repositories import (
     NoteRepository,
     PaperRepository,
@@ -21,12 +22,14 @@ class SectionService:
         papers: PaperRepository,
         reviews: ReviewRepository,
         project: ProjectRepository,
+        search: SearchService,
     ) -> None:
         self._sections = sections
         self._notes = notes
         self._papers = papers
         self._reviews = reviews
         self._project = project
+        self._search = search
 
     # ─── Structure ──────────────────────────────────────────────────────
 
@@ -168,8 +171,56 @@ class SectionService:
         await self._sections.link_papers(section_id, [(paper_id, via_query)])
         return {"linked": True}
 
-    async def link_new_papers(self, section_id: int, pairs: list[tuple[int, str]]) -> None:
-        await self._sections.link_papers(section_id, list(pairs))
+    async def research(
+        self, section_id: int, max_per_query: int, year_from: int | None, year_to: int | None
+    ) -> dict[str, Any]:
+        """One search per scope keyword/question; newly saved papers get linked to the section.
+
+        Deliberately no snowball: duplicates are not auto-linked and citation
+        expansion stays the user's explicit call.
+        """
+        section = await self._sections.get(section_id)
+        if section is None:
+            return {"error": f"section {section_id} not found"}
+        scope = section["scope"]
+        queries = [
+            q for q in (*scope.get("keywords", []), *scope.get("questions", [])) if q.strip()
+        ]
+        if not queries:
+            return {"error": "section scope has no keywords or questions to search"}
+
+        per_query: list[dict[str, Any]] = []
+        failed_sources: set[str] = set()
+        for q in queries:
+            res = await self._search.search(
+                query=q,
+                limit=max_per_query,
+                year_from=year_from,
+                year_to=year_to,
+                auto_save=True,
+            )
+            per_query.append(
+                {
+                    "query": q,
+                    "saved": res.get("saved", 0),
+                    "duplicates": res.get("duplicates", 0),
+                    "new_ids": res.get("new_ids", []),
+                }
+            )
+            failed_sources.update(res.get("failed_sources", []) or [])
+
+        links = [(pid, e["query"]) for e in per_query for pid in e["new_ids"]]
+        if links:
+            await self._sections.link_papers(section_id, links)
+
+        out: dict[str, Any] = {
+            "section_id": section_id,
+            "queries": per_query,
+            "total_new": len(links),
+        }
+        if failed_sources:
+            out["failed_sources"] = sorted(failed_sources)
+        return out
 
     async def unlink_paper(self, paper_id: int, section_id: int) -> dict[str, Any]:
         return {"deleted": await self._sections.unlink_paper(paper_id, section_id)}

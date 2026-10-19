@@ -9,6 +9,7 @@ from snowcite.domain.models import Paper
 from snowcite.logging import log
 from snowcite.settings import settings
 from snowcite.sources._http import http_get
+from snowcite.sources.base import SourceClient
 
 
 BASE_URL = "https://api.openalex.org"
@@ -61,34 +62,38 @@ def _to_paper(item: dict[str, Any]) -> Paper | None:
         return None
 
 
-async def search(
-    query: str,
-    limit: int = 20,
-    year_from: int | None = None,
-    year_to: int | None = None,
-) -> list[Paper]:
-    params: dict[str, str | int] = {
-        "search": query,
-        "per-page": min(limit, 200),
-    }
-    filters: list[str] = []
-    if year_from:
-        filters.append(f"publication_year:>{year_from - 1}")
-    if year_to:
-        filters.append(f"publication_year:<{year_to + 1}")
-    if filters:
-        params["filter"] = ",".join(filters)
-    if settings.openalex_email:
-        params["mailto"] = settings.openalex_email
+class OpenAlexSource(SourceClient):
+    name = "openalex"
 
-    resp = await http_get("openalex", f"{BASE_URL}/works", params=params)
-    resp.raise_for_status()
-    items = (resp.json().get("results")) or []
-    out: list[Paper] = []
-    for i in items:
-        if not (i.get("id") and (i.get("title") or i.get("display_name"))):
-            continue
-        p = _to_paper(i)
-        if p is not None:
-            out.append(p)
-    return out
+    async def search(
+        self,
+        query: str,
+        limit: int = 20,
+        year_from: int | None = None,
+        year_to: int | None = None,
+    ) -> list[Paper]:
+        params: dict[str, str | int] = {
+            "search": query,
+            "per-page": min(limit, 200),
+        }
+        filters: list[str] = []
+        if year_from:
+            filters.append(f"publication_year:>{year_from - 1}")
+        if year_to:
+            filters.append(f"publication_year:<{year_to + 1}")
+        if filters:
+            params["filter"] = ",".join(filters)
+        if settings.openalex_email:
+            params["mailto"] = settings.openalex_email
+
+        resp = await http_get("openalex", f"{BASE_URL}/works", params=params)
+        resp.raise_for_status()
+        items = (resp.json().get("results")) or []
+        out: list[Paper] = []
+        for i in items:
+            if not (i.get("id") and (i.get("title") or i.get("display_name"))):
+                continue
+            p = _to_paper(i)
+            if p is not None:
+                out.append(p)
+        return out

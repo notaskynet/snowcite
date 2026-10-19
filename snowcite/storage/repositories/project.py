@@ -2,7 +2,10 @@
 
 from typing import Any
 
+import aiosqlite
+
 from snowcite.storage.database import Database
+from snowcite.storage.projects import NoProjectError
 
 
 class ProjectRepository:
@@ -58,3 +61,17 @@ class ProjectRepository:
             cur = await conn.execute("SELECT content FROM thesis WHERE id = 1")
             row = await cur.fetchone()
         return row["content"] if row else None
+
+    async def discipline(self) -> str | None:
+        """`project_metadata.discipline`; None when no project is active yet.
+
+        Catches only "no active project" / "schema not initialised" / IO errors —
+        programmer errors surface normally.
+        """
+        try:
+            async with self._db.connection() as conn:
+                cur = await conn.execute("SELECT discipline FROM project_metadata WHERE id = 1")
+                row = await cur.fetchone()
+        except (NoProjectError, aiosqlite.Error, OSError):
+            return None
+        return row["discipline"] if row else None

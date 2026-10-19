@@ -6,6 +6,7 @@ import arxiv
 
 from snowcite.domain.dedup import normalize_doi
 from snowcite.domain.models import Paper
+from snowcite.sources.base import SourceClient
 
 
 def _to_paper(result: arxiv.Result) -> Paper:
@@ -56,10 +57,14 @@ def _search_sync(
     return out
 
 
-async def search(
-    query: str,
-    limit: int = 20,
-    year_from: int | None = None,
-    year_to: int | None = None,
-) -> list[Paper]:
-    return await asyncio.to_thread(_search_sync, query, limit, year_from, year_to)
+class ArxivSource(SourceClient):
+    name = "arxiv"
+
+    async def search(
+        self,
+        query: str,
+        limit: int = 20,
+        year_from: int | None = None,
+        year_to: int | None = None,
+    ) -> list[Paper]:
+        return await asyncio.to_thread(_search_sync, query, limit, year_from, year_to)
