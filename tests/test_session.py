@@ -8,14 +8,6 @@ from snowcite.container import container
 from snowcite.domain.models import Paper
 from snowcite.tools.review import set_review_criteria, set_review_status
 from snowcite.tools.session import get_session_state
-from snowcite.tools.writing import (
-    approve_outline,
-    approve_skeleton,
-    polish_section,
-    save_outline,
-    save_section,
-    save_skeleton,
-)
 
 
 @pytest.mark.asyncio
@@ -70,45 +62,35 @@ async def test_phase_snowballing_after_all_reviewed(tmp_project: Path):
     assert r["phase"] == "snowballing"
 
 
-@pytest.mark.asyncio
-async def test_phase_outline_proposed_then_approved(tmp_project: Path):
-    await save_outline([{"name": "intro", "target_words": 100}])
-    r = await get_session_state()
-    assert r["phase"] == "outline_proposed"
-    assert r["outline"]["exists"] is True
-    assert r["outline"]["approved"] is False
-
-    await approve_outline()
-    r = await get_session_state()
-    assert r["phase"] == "outline_approved"
+async def _section(title: str, draft: str = "", status: str | None = None) -> int:
+    sec = await container.section_service.create(title, None, None, None)
+    await container.section_service.update(sec["id"], None, None, draft or None, status, None, None)
+    return sec["id"]
 
 
 @pytest.mark.asyncio
-async def test_phase_skeleton_approved(tmp_project: Path):
-    await save_outline([{"name": "intro", "target_words": 100}])
-    await approve_outline()
-    await save_skeleton([{"name": "intro", "draft": "..."}])
-    await approve_skeleton()
+async def test_phase_outlined_when_sections_have_no_drafts(tmp_project: Path):
+    await _section("intro")
     r = await get_session_state()
-    assert r["phase"] == "skeleton_approved"
+    assert r["phase"] == "outlined"
+    assert r["counts"]["sections_total"] == 1
 
 
 @pytest.mark.asyncio
-async def test_phase_writing_has_unpolished_section(tmp_project: Path):
-    await save_section("intro", "draft text")
+async def test_phase_writing_while_a_drafted_section_is_unfinished(tmp_project: Path):
+    await _section("intro", "draft text", "drafting")
     r = await get_session_state()
     assert r["phase"] == "writing"
     assert r["counts"]["sections_written"] == 1
-    assert r["counts"]["sections_polished"] == 0
+    assert r["counts"]["sections_done"] == 0
 
 
 @pytest.mark.asyncio
-async def test_phase_polishing_when_all_sections_polished(tmp_project: Path):
-    await save_section("intro", "draft")
-    await polish_section("intro", "polished")
+async def test_phase_polishing_when_all_drafted_sections_done(tmp_project: Path):
+    await _section("intro", "draft", "done")
     r = await get_session_state()
     assert r["phase"] == "polishing"
-    assert r["counts"]["sections_polished"] == 1
+    assert r["counts"]["sections_done"] == 1
 
 
 @pytest.mark.asyncio

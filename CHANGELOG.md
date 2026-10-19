@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/0.3.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-10-19
+
+### Changed
+
+- **Layered package layout.** `domain/` (pure models, types, rules), `storage/` (`Database`, schema, repositories), `services/` (Review, Note, Section, Synthesis, Search, Citation, Build), `render/` (`DocumentBackend` with `TypstBackend`/`LatexBackend`, `Compiler`, bibliography, templates), `sources/` (`SourceClient` + one class per source), wired in `container.py`. MCP tools are thin wrappers over services; workflow invariants live in `domain/rules.py`.
+- `write_document` takes `title`/`author` first and builds from stored section drafts when `sections` is omitted.
+- Session phases: `outline_proposed` / `outline_approved` / `skeleton_approved` replaced by `outlined`; phases derive from `sections`.
+
+### Fixed
+
+- v0.3 section drafts now reach the document: `write_document`, `estimate_pages`, `get_review_progress`, `gap_check`, `rewrite_citations`, `set_backend`, and the session state all read `sections.draft` (previously the v0.2 `section_content` table).
+- The v0.2 `get_section`/`list_sections` tools shadowed the v0.3 ones; they are gone.
+
+### Removed
+
+- The v0.2 writing pipeline: `save_outline`, `get_outline`, `approve_outline`, `save_skeleton`, `get_skeleton`, `approve_skeleton`, `check_section_drift`, `save_section`, `get_section_content`, `list_section_contents`, `polish_section`, `polish_document`, `regenerate_section_brief`, `prepare_section_for_review`. Use sections + the critique loop.
+- Per-section `artifact_ids` assignment (it lived in the outline). Artifacts are listed and fetched directly.
+
+### Migrated
+
+- Existing `outline` + `section_content` rows are folded into `sections` once per database (outline order, `target_words` kept in the new `sections.target_words` column, assigned papers linked, polished content → `done`). The old tables are left in place but no longer read.
+
 ## [0.3.0] — 2026-04-28
 
 ### Added

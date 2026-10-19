@@ -3,6 +3,7 @@
 from snowcite.render.compiler import Compiler
 from snowcite.services import (
     BuildService,
+    CitationService,
     NoteService,
     ReviewService,
     SearchService,
@@ -53,6 +54,7 @@ class Container:
             self.sections, self.notes, self.papers, self.reviews, self.project, self.search
         )
         self.synthesis = SynthesisService(self.notes, self.reviews)
+        self.citations = CitationService(self.sections)
         self.build = BuildService(self.papers, self.sections, self.project, Compiler())
 
 

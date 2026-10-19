@@ -1,4 +1,4 @@
-"""T10: draft-first writing pipeline + PRISMA + overview table."""
+"""PRISMA, overview table, thesis, and citation checks over section drafts."""
 
 from pathlib import Path
 
@@ -7,208 +7,21 @@ import pytest
 from snowcite.container import container
 from snowcite.domain.models import Paper
 from snowcite.tools.review import set_review_status
+from snowcite.tools.sections import get_section
 from snowcite.tools.writing import (
-    approve_outline,
-    approve_skeleton,
-    check_section_drift,
     gap_check,
     generate_overview_table,
     generate_prisma_flow,
-    get_outline,
-    get_section_content,
-    get_skeleton,
     get_thesis,
-    list_section_contents,
-    polish_document,
-    polish_section,
     rewrite_citations,
-    save_outline,
-    save_section,
-    save_skeleton,
     save_thesis,
 )
 
 
-# ─── Outline ────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_outline_save_get_approve(tmp_project: Path):
-    sections = [
-        {"name": "intro", "target_words": 400, "paper_ids": [1, 2]},
-        {"name": "methods", "target_words": 800, "paper_ids": [3]},
-    ]
-    r = await save_outline(sections)
-    assert r["saved"] and r["approved"] is False
-
-    got = await get_outline()
-    assert len(got["sections"]) == 2
-    assert got["approved"] == 0
-
-    r = await approve_outline()
-    assert r["approved"] is True
-
-    got = await get_outline()
-    assert got["approved"] == 1
-
-
-@pytest.mark.asyncio
-async def test_approve_outline_without_save(tmp_project: Path):
-    r = await approve_outline()
-    assert r["approved"] is False
-    assert "error" in r
-
-
-@pytest.mark.asyncio
-async def test_save_outline_resets_approval(tmp_project: Path):
-    await save_outline([{"name": "a", "target_words": 100}])
-    await approve_outline()
-    # Re-saving outline should unset approval (user needs to re-approve).
-    await save_outline([{"name": "b", "target_words": 100}])
-    got = await get_outline()
-    assert got["approved"] == 0
-
-
-# ─── Skeleton ───────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_skeleton_save_get_approve(tmp_project: Path):
-    await save_outline([{"name": "intro", "target_words": 100}])
-    await approve_outline()
-    r = await save_skeleton([{"name": "intro", "draft": "Hello"}])
-    assert r["saved"]
-    got = await get_skeleton()
-    assert len(got["sections"]) == 1
-    await approve_skeleton()
-    got = await get_skeleton()
-    assert got["approved"] == 1
-
-
-@pytest.mark.asyncio
-async def test_skeleton_warns_when_names_diverge_from_outline(tmp_project: Path):
-    await save_outline(
-        [{"name": "intro", "target_words": 100}, {"name": "methods", "target_words": 100}]
-    )
-    await approve_outline()
-    r = await save_skeleton([{"name": "intro", "draft": "x"}, {"name": "extra", "draft": "y"}])
-    warnings = r.get("warnings") or []
-    assert any("missing outline sections" in w for w in warnings)
-    assert any("sections not in outline" in w for w in warnings)
-
-
-@pytest.mark.asyncio
-async def test_skeleton_warns_when_outline_unapproved(tmp_project: Path):
-    await save_outline([{"name": "a", "target_words": 100}])
-    r = await save_skeleton([{"name": "a", "draft": "..."}])
-    assert any("not yet approved" in w for w in r.get("warnings", []))
-
-
-# ─── Section content + drift ───────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_section_save_and_version_bump(tmp_project: Path):
-    r1 = await save_section("intro", "one two three four five")
-    assert r1["version"] == 1
-    assert r1["word_count"] == 5
-
-    r2 = await save_section("intro", "totally different")
-    assert r2["version"] == 2
-
-    got = await get_section_content("intro")
-    assert got["content"] == "totally different"
-    assert got["version"] == 2
-
-
-@pytest.mark.asyncio
-async def test_list_sections_shows_metadata_only(tmp_project: Path):
-    await save_section("intro", "a b c")
-    await save_section("methods", "one two three four")
-    rows = await list_section_contents()
-    assert {r["name"] for r in rows} == {"intro", "methods"}
-    # No content body in the listing.
-    assert all("content" not in r for r in rows)
-
-
-@pytest.mark.asyncio
-async def test_check_section_drift_no_outline(tmp_project: Path):
-    r = await check_section_drift("intro", "hello world")
-    assert r["has_drift"] is True
-    assert any(w["kind"] == "no_outline" for w in r["warnings"])
-
-
-@pytest.mark.asyncio
-async def test_check_section_drift_unknown_section(tmp_project: Path):
-    await save_outline([{"name": "intro", "target_words": 200}])
-    await approve_outline()
-    r = await check_section_drift("methods", "some content")
-    assert any(w["kind"] == "unknown_section" for w in r["warnings"])
-
-
-@pytest.mark.asyncio
-async def test_check_section_drift_within_tolerance(tmp_project: Path):
-    await save_outline([{"name": "intro", "target_words": 500}])
-    await approve_outline()
-    # 500 ±30% → up to ±150 words, so 450 or 600 is fine.
-    content = " ".join(["word"] * 500)
-    r = await check_section_drift("intro", content)
-    assert r["has_drift"] is False
-
-
-@pytest.mark.asyncio
-async def test_check_section_drift_outside_tolerance(tmp_project: Path):
-    await save_outline([{"name": "intro", "target_words": 500}])
-    await approve_outline()
-    content = " ".join(["word"] * 200)  # way under target
-    r = await check_section_drift("intro", content)
-    assert r["has_drift"] is True
-    assert any(w["kind"] == "word_count" for w in r["warnings"])
-
-
-@pytest.mark.asyncio
-async def test_check_section_drift_small_section_uses_absolute_floor(tmp_project: Path):
-    # Target 100, 30% = 30 words — but absolute floor is 100 words, so a
-    # 150-word section is still within tolerance.
-    await save_outline([{"name": "short", "target_words": 100}])
-    await approve_outline()
-    content = " ".join(["w"] * 150)
-    r = await check_section_drift("short", content)
-    assert r["has_drift"] is False
-
-
-# ─── Polish ─────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_polish_section_sets_polished_flag(tmp_project: Path):
-    await save_section("intro", "draft text")
-    r = await polish_section("intro", "polished text, nicer")
-    assert r["polished"] is True
-    got = await get_section_content("intro")
-    assert got["polished"] == 1
-    assert got["content"] == "polished text, nicer"
-
-
-@pytest.mark.asyncio
-async def test_polish_section_missing_returns_error(tmp_project: Path):
-    r = await polish_section("nope", "text")
-    assert "error" in r
-
-
-@pytest.mark.asyncio
-async def test_polish_document_updates_existing_skips_missing(tmp_project: Path):
-    await save_section("a", "aaa")
-    await save_section("b", "bbb")
-    r = await polish_document(
-        [
-            {"name": "a", "content": "polished a"},
-            {"name": "b", "content": "polished b"},
-            {"name": "ghost", "content": "never created"},
-        ]
-    )
-    assert set(r["updated"]) == {"a", "b"}
-    assert r["missing"] == ["ghost"]
+async def _draft(title: str, text: str) -> int:
+    sec = await container.section_service.create(title, None, None, None)
+    await container.section_service.update(sec["id"], None, None, text, "drafting", None, None)
+    return sec["id"]
 
 
 # ─── PRISMA flow ────────────────────────────────────────────────────────────
@@ -292,35 +105,32 @@ async def test_overview_table_latex_longtable(tmp_project: Path):
 async def test_rewrite_citations_remaps_bracketed_refs(tmp_project: Path):
     # Section with cites [1], [2, 3], [4]. Remap 1→11, 3→13; expect 1→11 and
     # 3→13 replaced, 2 and 4 left alone, structure of grouped cite preserved.
-    await save_section("intro", "See [1] and [2, 3]; also [4].")
+    sid = await _draft("intro", "See [1] and [2, 3]; also [4].")
     r = await rewrite_citations(mapping={"1": 11, "3": 13})
     assert r["refs_replaced"] == 2
     assert len(r["modified"]) == 1
     assert r["modified"][0]["name"] == "intro"
 
-    stored = await get_section_content("intro")
-    assert "[11]" in stored["content"]
-    assert "[2, 13]" in stored["content"]
-    assert "[4]" in stored["content"]
-    # Unchanged section ids should not get bumped.
-    # Version was 1 initially (from save_section), now should be 2.
-    assert stored["version"] == 2
+    draft = (await get_section(sid))["draft"]
+    assert "[11]" in draft
+    assert "[2, 13]" in draft
+    assert "[4]" in draft
 
 
 @pytest.mark.asyncio
 async def test_rewrite_citations_skips_sections_without_target_ids(tmp_project: Path):
-    await save_section("a", "See [1].")
-    await save_section("b", "See [99].")
+    await _draft("a", "See [1].")
+    b = await _draft("b", "See [99].")
     r = await rewrite_citations(mapping={"1": 2})
     assert r["refs_replaced"] == 1
     assert [m["name"] for m in r["modified"]] == ["a"]
-    # Section b untouched — version stays at 1.
-    assert (await get_section_content("b"))["version"] == 1
+    # Section b is untouched.
+    assert (await get_section(b))["draft"] == "See [99]."
 
 
 @pytest.mark.asyncio
 async def test_rewrite_citations_empty_mapping_is_noop(tmp_project: Path):
-    await save_section("x", "See [1].")
+    await _draft("x", "See [1].")
     r = await rewrite_citations(mapping={})
     assert r["refs_replaced"] == 0
     assert r["modified"] == []
@@ -361,7 +171,7 @@ async def test_gap_check_flags_long_uncited_sentences(tmp_project: Path):
         "This claim is well documented in the literature [1]. "
         "A completely different assertion stands here with no supporting citation at all."
     )
-    await save_section("intro", content)
+    await _draft("intro", content)
     r = await gap_check(min_words=5)
     assert r["total_gaps"] == 1
     assert r["gaps"][0]["section"] == "intro"
@@ -371,7 +181,7 @@ async def test_gap_check_flags_long_uncited_sentences(tmp_project: Path):
 @pytest.mark.asyncio
 async def test_gap_check_skips_short_connectives(tmp_project: Path):
     # Short sentences below the default min_words are ignored even without cites.
-    await save_section("short", "Hi. Also no cite here either really.")
+    await _draft("short", "Hi. Also no cite here either really.")
     r = await gap_check()
     assert r["total_gaps"] == 0
 

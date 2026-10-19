@@ -5,7 +5,7 @@ from pathlib import Path
 from snowcite.container import container
 from snowcite.tools.compile import set_backend, write_document
 from snowcite.tools.sections import create_section, get_section, update_section
-from snowcite.tools.writing import gap_check, rewrite_citations, save_section
+from snowcite.tools.writing import gap_check, rewrite_citations
 
 
 async def _draft(title: str, draft: str, parent_id: int | None = None) -> int:
@@ -23,14 +23,6 @@ async def test_loader_orders_children_after_parent_and_skips_empty(tmp_project: 
 
     got = await container.sections.load_document_sections()
     assert [s["title"] for s in got] == ["Parent", "Child", "Last"]
-
-
-async def test_loader_falls_back_to_v02_section_content(tmp_project: Path):
-    await container.db.init()
-    await save_section("intro", "legacy text")
-    assert await container.sections.load_document_sections() == [
-        {"title": "intro", "content": "legacy text"}
-    ]
 
 
 async def test_write_document_builds_from_db_when_sections_omitted(tmp_project: Path):

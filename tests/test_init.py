@@ -208,3 +208,40 @@ async def test_claude_md_contains_language_and_backend(isolated_cwd: Path):
     assert "fr" in text
     assert "latex" in text
     assert "apa" in text
+
+
+@pytest.mark.asyncio
+async def test_legacy_writing_tables_migrate_into_sections(isolated_cwd: Path):
+    # A v0.2 database: outline + section_content, no `sections` table yet.
+    create_project_dir()
+    async with aiosqlite.connect(get_db_path()) as conn:
+        await conn.executescript(
+            """
+            CREATE TABLE outline (
+                id INTEGER PRIMARY KEY CHECK (id = 1), sections_json TEXT NOT NULL,
+                approved INTEGER DEFAULT 0, created_at TIMESTAMP, updated_at TIMESTAMP
+            );
+            CREATE TABLE section_content (
+                name TEXT PRIMARY KEY, content TEXT NOT NULL, word_count INTEGER,
+                version INTEGER DEFAULT 1, polished INTEGER DEFAULT 0, updated_at TIMESTAMP
+            );
+            INSERT INTO outline (id, sections_json) VALUES
+                (1, '[{"name": "Intro", "target_words": 300}, {"name": "Methods"}]');
+            INSERT INTO section_content (name, content, polished) VALUES
+                ('Intro', 'intro text', 1), ('Extra', 'orphan text', 0);
+            """
+        )
+        await conn.commit()
+    container.db.reset()
+
+    sections = await container.section_service.list_all()
+    assert [(s["title"], s["status"], s["draft"]) for s in sections] == [
+        ("Intro", "done", "intro text"),
+        ("Methods", "outline", ""),
+        ("Extra", "drafting", "orphan text"),
+    ]
+    assert sections[0]["target_words"] == 300
+
+    # Running init again must not duplicate the migrated sections.
+    container.db.reset()
+    assert len(await container.section_service.list_all()) == 3

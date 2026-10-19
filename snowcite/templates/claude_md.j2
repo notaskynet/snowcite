@@ -114,7 +114,7 @@ thesis step is additive, not required.
 
 ### Mandatory low-confidence second pass
 
-Before `approve_outline()`, call `get_low_confidence_reviews()` and walk the
+Before creating the section outline, call `get_low_confidence_reviews()` and walk the
 user through every `auto_low` decision one at a time. These are papers you
 weren't sure about — the user is the tiebreaker. **Do not skip this step**;
 it is the only safeguard against `auto_low` drift silently shaping the
@@ -187,10 +187,9 @@ reads a text file, or `add_artifact_inline(type, label, content, ...)` takes
 a string directly. Supported types: `interview`, `code`, `document`, `note`,
 `dataset`.
 
-**To assign artifacts to a section:** add `artifact_ids: [...]` alongside
-`paper_ids` in the outline entry. `prepare_section_for_review`,
-`regenerate_section_brief`, and the review subagents pick them up
-automatically.
+**To use artifacts in a section:** list them with `list_artifacts(included_only=True)`
+and pull full content with `get_artifact(id)` when quoting. Sections no longer
+carry per-section artifact assignments.
 
 **Inline citation format:** `[I:3]` for interview id 3, `[C:auth.py]` for
 code, `[D:5]` for document, `[N:2]` for note, `[DS:1]` for dataset. Keep
@@ -218,22 +217,21 @@ Agent tool. Run them **sequentially, never in parallel** — the humanizer would
 otherwise polish language in sentences that academic-reviewer is about to ask
 you to rewrite, wasting both passes.
 
-**After `save_section(name, content)`:**
+**After a section is drafted (`update_section(section_id, draft=...)`):**
 
 1. Spawn `academic-reviewer` on the section. It calls
-   `prepare_section_for_review(name)`, reads the assigned papers, and returns
-   a structured findings list (unsupported claims, citation misuse, fabricated
-   quotes, logical gaps, etc.).
-2. Show findings to the user. Apply fixes they accept via
-   `save_section(name, revised)`.
+   `get_section_critique_inputs(section_id)`, reads the notes and linked
+   papers, and returns a structured findings list (unsupported claims,
+   citation misuse, fabricated quotes, logical gaps, etc.).
+2. Record the findings with `record_section_critique`, show them to the user,
+   and apply accepted fixes via `revise_section(section_id, new_draft)`.
 3. When content-level review is stable (user is happy with claims + evidence),
    spawn `humanizer`. It flags machine-translated / LLM-tic phrasings and
    proposes concrete per-phrase replacements.
-4. Apply accepted humanizer suggestions via `polish_section(name, polished)`.
+4. Apply accepted humanizer suggestions via `revise_section(section_id, polished)`.
 
-**For a whole-document pass:** call `polish_document()` first to handle
-cross-section transitions/dupes, then run the humanizer across every polished
-section. Same sequential rule.
+**For a whole-document pass:** run the humanizer across every section after
+the content review is stable. Same sequential rule.
 
 The review agents never rewrite — they return findings for *you* to apply. If
 they do rewrite, that's a bug in the agent prompt; report it.

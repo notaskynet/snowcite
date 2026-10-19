@@ -1,5 +1,7 @@
 """SQLite schema and additive migrations for a project's `papers.db`."""
 
+import json
+
 import aiosqlite
 
 
@@ -62,37 +64,12 @@ CREATE TABLE IF NOT EXISTS review_summary (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS outline (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    sections_json TEXT NOT NULL,
-    approved INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS skeleton (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    sections_json TEXT NOT NULL,
-    approved INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Thesis: 2–5 paragraphs answering "what is this paper about, what's the
 -- contribution". Singleton. Written early (before outline) in the thesis-first
 -- workflow so outline + search can key off it.
 CREATE TABLE IF NOT EXISTS thesis (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     content TEXT NOT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS section_content (
-    name TEXT PRIMARY KEY,
-    content TEXT NOT NULL,
-    word_count INTEGER,
-    version INTEGER DEFAULT 1,
-    polished INTEGER DEFAULT 0,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -151,6 +128,7 @@ CREATE TABLE IF NOT EXISTS sections (
     should_fix INTEGER NOT NULL DEFAULT 0,
     nits INTEGER NOT NULL DEFAULT 0,
     critique_iterations INTEGER NOT NULL DEFAULT 0,
+    target_words INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -285,6 +263,8 @@ async def _migrate_sections_add_columns(conn: aiosqlite.Connection) -> None:
         await conn.execute(
             "ALTER TABLE sections ADD COLUMN critique_iterations INTEGER NOT NULL DEFAULT 0"
         )
+    if "target_words" not in existing:
+        await conn.execute("ALTER TABLE sections ADD COLUMN target_words INTEGER")
 
 
 async def _migrate_project_metadata_add_columns(conn: aiosqlite.Connection) -> None:
@@ -303,10 +283,60 @@ async def _migrate_project_metadata_add_columns(conn: aiosqlite.Connection) -> N
             await conn.execute(f"ALTER TABLE project_metadata ADD COLUMN {name} {coltype}")
 
 
+async def _migrate_legacy_writing(conn: aiosqlite.Connection) -> None:
+    """Fold the v0.2 writing store (outline + section_content) into `sections`.
+
+    Outline entries become sections in outline order (target_words kept, assigned
+    paper_ids linked); section_content bodies become drafts (polished → 'done',
+    otherwise 'drafting'). Content whose name isn't in the outline is appended.
+    The old tables are left untouched but no longer read. Gated by
+    `PRAGMA user_version` so it runs once per database.
+    """
+    cur = await conn.execute("PRAGMA user_version")
+    if (await cur.fetchone())[0] >= 1:
+        return
+    cur = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = {r[0] for r in await cur.fetchall()}
+
+    outline: list[dict] = []
+    if "outline" in tables:
+        cur = await conn.execute("SELECT sections_json FROM outline WHERE id = 1")
+        row = await cur.fetchone()
+        if row:
+            outline = [e if isinstance(e, dict) else {"name": e} for e in json.loads(row[0]) or []]
+    content: dict[str, tuple[str, int]] = {}
+    if "section_content" in tables:
+        cur = await conn.execute("SELECT name, content, polished FROM section_content")
+        content = {r[0]: (r[1], r[2] or 0) for r in await cur.fetchall()}
+
+    entries = list(outline)
+    known = {e.get("name") for e in entries}
+    entries += [{"name": n} for n in sorted(content) if n not in known]
+    for position, entry in enumerate(entries):
+        name = entry.get("name")
+        if not name:
+            continue
+        body, polished = content.get(name, ("", 0))
+        status = "done" if polished else ("drafting" if body else "outline")
+        cur = await conn.execute(
+            "INSERT INTO sections (title, scope_json, draft, status, position, target_words) "
+            "VALUES (?, '{}', ?, ?, ?, ?)",
+            (name, body, status, position, entry.get("target_words")),
+        )
+        for paper_id in entry.get("paper_ids") or []:
+            await conn.execute(
+                "INSERT OR IGNORE INTO paper_section_links (paper_id, section_id, via_query) "
+                "SELECT id, ?, 'legacy outline' FROM papers WHERE id = ?",
+                (cur.lastrowid, paper_id),
+            )
+    await conn.execute("PRAGMA user_version = 1")
+
+
 async def apply_schema(conn: aiosqlite.Connection) -> None:
     """Bring `conn`'s database up to the current schema. Idempotent."""
     await _migrate_reviews_confidence(conn)
     await conn.executescript(SCHEMA)
     await _migrate_sections_add_columns(conn)
     await _migrate_project_metadata_add_columns(conn)
+    await _migrate_legacy_writing(conn)
     await conn.commit()

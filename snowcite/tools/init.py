@@ -248,8 +248,7 @@ async def init_project(
     `AskUserQuestion` whether to merge / overwrite (backup in .bak) / skip, then
     apply the chosen action itself.
 
-    `update=True` keeps existing `review_criteria`, `outline`, `skeleton`,
-    `section_content`, `papers` etc. — it only touches metadata + CLAUDE.md +
+    `update=True` keeps existing `review_criteria`, `sections`, `papers` etc. — it only touches metadata + CLAUDE.md +
     settings diff. Use this when the user tweaks their project profile mid-work.
     """
     metadata = metadata or {}

@@ -169,9 +169,9 @@ async def delete_artifact(artifact_id: int) -> dict[str, Any]:
 async def set_artifact_included(artifact_id: int, included: bool) -> dict[str, Any]:
     """Toggle whether the writing pipeline considers this artifact.
 
-    Excluded artifacts stay in the DB but do not appear in
-    `prepare_section_for_review`, don't land in the Primary-sources appendix,
-    and can't be picked up by automatic assignments.
+    Excluded artifacts stay in the DB but are hidden from
+    `list_artifacts(included_only=True)` and don't land in the
+    Primary-sources appendix.
     """
     updated = await artifacts.set_included(artifact_id, included)
     if not updated:
