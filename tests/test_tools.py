@@ -205,5 +205,6 @@ async def test_export_bibliography_formats(tmp_project: Path):
     await container.review_service.set_status([1], "approved", "r")
     bib = await export_bibliography("bibtex")
     assert bib["entries"] == 1 and Path(bib["path"]).name == "references.bib"
+    assert list(bib["keys"]) == ["1"] and bib["keys"]["1"] in Path(bib["path"]).read_text()
     ris = await export_bibliography("ris", str(tmp_project / "out.ris"))
     assert "TY  - " in Path(ris["path"]).read_text(encoding="utf-8")
