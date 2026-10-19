@@ -52,7 +52,10 @@ async def test_init_migrates_existing_db_without_target_columns(
             """
             CREATE TABLE project_metadata (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
-                author TEXT,
+                author TEXT, supervisor TEXT, institution TEXT, department TEXT, year INTEGER,
+                work_type TEXT, target_length TEXT, language TEXT DEFAULT 'en', discipline TEXT,
+                standard TEXT DEFAULT 'plain', methodology TEXT, backend TEXT DEFAULT 'typst',
+                review_strictness TEXT DEFAULT 'standard', deadline TEXT,
                 extra_json TEXT DEFAULT '{}',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

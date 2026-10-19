@@ -1,5 +1,7 @@
 import re
 
+from snowcite.domain.results import UncitedSentence
+
 
 # Matches `[N]`, `[N, M]`, `[N; M]`.
 CITE_REF_RE = re.compile(r"\[(\d+(?:\s*[,;]\s*\d+)*)\]")
@@ -19,11 +21,9 @@ _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 GAP_CHECK_MIN_WORDS = 8
 
 
-def uncited_sentences(
-    content: str, min_words: int = GAP_CHECK_MIN_WORDS
-) -> list[dict[str, int | str]]:
+def uncited_sentences(content: str, min_words: int = GAP_CHECK_MIN_WORDS) -> list[UncitedSentence]:
     """Substantive sentences (>= `min_words` words) that carry no `[N]` cite."""
-    out: list[dict[str, int | str]] = []
+    out: list[UncitedSentence] = []
     for sentence in _SENTENCE_SPLIT_RE.split(content):
         stripped = sentence.strip()
         words = len(stripped.split())

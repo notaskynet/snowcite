@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from snowcite.app import mcp
 from snowcite.container import container
 from snowcite.domain.bibliography import build_bibtex_document, build_cite_key_map
-from snowcite.domain.models import ApprovedPaper
+from snowcite.domain.records import ApprovedPaper
+from snowcite.domain.results import ExportResult
 from snowcite.storage.projects import require_project_root
 
 
@@ -37,7 +38,7 @@ def _ris_entry(paper: ApprovedPaper) -> str:
 async def export_bibliography(
     format: Literal["bibtex", "ris"] = "bibtex",  # noqa: A002 — natural parameter name
     output_path: str | None = None,
-) -> dict[str, Any]:
+) -> ExportResult:
     """Write the approved set as `references.bib` (BibTeX) or `references.ris` (RIS).
 
     BibTeX reuses a paper's own bibtex when present. `keys` maps snowcite paper ids

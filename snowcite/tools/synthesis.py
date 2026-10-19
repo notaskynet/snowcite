@@ -1,12 +1,12 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.records import ErrorResult
+from snowcite.domain.results import ClusterNotes, GapsResult, SynthesisAdded
 from snowcite.domain.types import NoteType
 
 
 @mcp.tool()
-async def get_cluster_notes(cluster: str) -> dict[str, Any]:
+async def get_cluster_notes(cluster: str) -> ClusterNotes:
     """Bundled view of one cluster: per-paper notes grouped by paper + existing cross-paper notes.
 
     Use this as the input to a synthesis pass — it returns everything Claude
@@ -28,7 +28,7 @@ async def add_synthesis_note(
     type: NoteType,  # noqa: A002 — natural field name across the notes API
     text: str,
     derived_from_note_ids: list[int],
-) -> dict[str, Any]:
+) -> SynthesisAdded | ErrorResult:
     """Atomic insert of a cross-paper note + `derived_from` links to its sources.
 
     `type` must be a cross-paper type (gap, contradiction, consensus,
@@ -40,7 +40,7 @@ async def add_synthesis_note(
 
 
 @mcp.tool()
-async def find_gaps(cluster: str | None = None) -> dict[str, Any]:
+async def find_gaps(cluster: str | None = None) -> GapsResult:
     """Surface clusters where cross-paper synthesis is thin or missing.
 
     Heuristics (each cluster can hit multiple):

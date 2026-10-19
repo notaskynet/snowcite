@@ -1,41 +1,88 @@
 import json
+from collections.abc import Mapping
 from typing import Any
 
 import aiosqlite
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from snowcite.domain.records import ProjectMetadata, ProjectTargets, ThesisRecord
 from snowcite.storage.database import Database
+from snowcite.storage.models import ProjectMetadataRow, ThesisRow
 from snowcite.storage.projects import NoProjectError
+
+
+# Columns of the `project_metadata` singleton that callers may set; keys outside it
+# are kept in `extra_json` untouched.
+METADATA_FIELDS = (
+    "author",
+    "supervisor",
+    "institution",
+    "department",
+    "year",
+    "work_type",
+    "target_length",
+    "language",
+    "discipline",
+    "standard",
+    "methodology",
+    "review_strictness",
+    "deadline",
+    "target_pages",
+    "target_sources_min",
+    "target_sources_max",
+    "target_words",
+    "citation_density_target",
+)
+_TARGET_FIELDS = (
+    "target_sources_min",
+    "target_sources_max",
+    "target_words",
+    "citation_density_target",
+)
 
 
 class ProjectRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
-    async def targets(self) -> dict[str, Any]:
+    async def targets(self) -> ProjectTargets:
         """Non-null target metrics (sources min/max, words, citation density)."""
-        async with self._db.connection() as conn:
-            cur = await conn.execute(
-                """
-                SELECT target_sources_min, target_sources_max, target_words,
-                       citation_density_target
-                FROM project_metadata WHERE id = 1
-                """
+        async with self._db.session() as session:
+            row = await session.get(ProjectMetadataRow, 1)
+        if row is None:
+            return {}
+        return {k: getattr(row, k) for k in _TARGET_FIELDS if getattr(row, k) is not None}  # type: ignore[return-value]
+
+    async def load_metadata(self) -> ProjectMetadata:
+        """The profile without bookkeeping columns or nulls; {} if never saved."""
+        async with self._db.session() as session:
+            row = await session.get(ProjectMetadataRow, 1)
+        if row is None:
+            return {}
+        data: dict[str, Any] = {
+            k: getattr(row, k) for k in METADATA_FIELDS if getattr(row, k) is not None
+        }
+        extra = json.loads(row.extra_json) if row.extra_json else {}
+        if extra:
+            data["extra"] = extra
+        return data  # type: ignore[return-value]
+
+    async def save_metadata(self, metadata: Mapping[str, Any]) -> None:
+        """Upsert the singleton; keys outside `METADATA_FIELDS` go to extra_json."""
+        known = {k: metadata[k] for k in METADATA_FIELDS if k in metadata}
+        extra = {k: v for k, v in metadata.items() if k not in METADATA_FIELDS}
+        values = {**known, "extra_json": json.dumps(extra) if extra else "{}"}
+        stmt = (
+            sqlite_insert(ProjectMetadataRow)
+            .values(id=1, **values)
+            .on_conflict_do_update(
+                index_elements=[ProjectMetadataRow.id],
+                set_={**values, "updated_at": func.current_timestamp()},
             )
-            meta = await cur.fetchone()
-        return {k: meta[k] for k in meta.keys() if meta[k] is not None} if meta else {}
-
-    async def defaults(self) -> dict[str, Any]:
-        """The whole `project_metadata` row (title/author/backend/standard/language, targets)."""
-        async with self._db.connection() as conn:
-            cur = await conn.execute("SELECT * FROM project_metadata WHERE id = 1")
-            row = await cur.fetchone()
-        return {k: row[k] for k in row.keys()} if row else {}
-
-    async def thesis(self) -> str | None:
-        async with self._db.connection() as conn:
-            cur = await conn.execute("SELECT content FROM thesis WHERE id = 1")
-            row = await cur.fetchone()
-        return row["content"] if row else None
+        )
+        async with self._db.session() as session, session.begin():
+            await session.execute(stmt)
 
     async def discipline(self) -> str | None:
         """`project_metadata.discipline`; None when no project is active yet.
@@ -44,89 +91,32 @@ class ProjectRepository:
         programmer errors surface normally.
         """
         try:
-            async with self._db.connection() as conn:
-                cur = await conn.execute("SELECT discipline FROM project_metadata WHERE id = 1")
-                row = await cur.fetchone()
+            async with self._db.session() as session:
+                return await session.scalar(
+                    select(ProjectMetadataRow.discipline).where(ProjectMetadataRow.id == 1)
+                )
         except (NoProjectError, aiosqlite.Error, OSError):
             return None
-        return row["discipline"] if row else None
+
+    # ─── Thesis ─────────────────────────────────────────────────────────
+
+    async def thesis(self) -> str | None:
+        async with self._db.session() as session:
+            return await session.scalar(select(ThesisRow.content).where(ThesisRow.id == 1))
+
+    async def thesis_record(self) -> ThesisRecord | None:
+        async with self._db.session() as session:
+            row = await session.get(ThesisRow, 1)
+        if row is None:
+            return None
+        return {"content": row.content, "updated_at": row.updated_at}
 
     async def save_thesis(self, content: str) -> None:
-        async with self._db.connection() as conn:
-            await conn.execute(
-                """
-                INSERT INTO thesis (id, content, updated_at)
-                VALUES (1, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(id) DO UPDATE SET
-                    content = excluded.content,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (content,),
-            )
-            await conn.commit()
-
-    async def thesis_record(self) -> dict[str, Any] | None:
-        async with self._db.connection() as conn:
-            cur = await conn.execute("SELECT content, updated_at FROM thesis WHERE id = 1")
-            row = await cur.fetchone()
-        return dict(row) if row else None
-
-    # ─── Project metadata (author, standard, backend, targets, ...) ─────
-
-    # Columns of the `project_metadata` singleton that callers may set. Keeping
-    # them in one place keeps the INSERT, the template variables and the
-    # return value in sync; unknown keys land in `extra_json` untouched.
-    METADATA_FIELDS = (
-        "author",
-        "supervisor",
-        "institution",
-        "department",
-        "year",
-        "work_type",
-        "target_length",
-        "language",
-        "discipline",
-        "standard",
-        "methodology",
-        "review_strictness",
-        "deadline",
-        "target_pages",
-        "target_sources_min",
-        "target_sources_max",
-        "target_words",
-        "citation_density_target",
-    )
-
-    async def load_metadata(self) -> dict[str, Any]:
-        """The metadata row without bookkeeping columns or nulls; {} if never saved."""
-        async with self._db.connection() as conn:
-            cur = await conn.execute("SELECT * FROM project_metadata WHERE id = 1")
-            row = await cur.fetchone()
-        if row is None:
-            return {}
-        data = {k: row[k] for k in row.keys() if k not in ("id", "created_at", "updated_at")}
-        if data.get("extra_json"):
-            data["extra"] = json.loads(data.pop("extra_json"))
-        else:
-            data.pop("extra_json", None)
-        return {k: v for k, v in data.items() if v is not None}
-
-    async def save_metadata(self, metadata: dict[str, Any]) -> None:
-        """Upsert the singleton; keys outside `METADATA_FIELDS` are kept in extra_json."""
-        known = {k: metadata.get(k) for k in self.METADATA_FIELDS if k in metadata}
-        extra = {k: v for k, v in metadata.items() if k not in self.METADATA_FIELDS}
-        extra_json = json.dumps(extra) if extra else "{}"
-
-        cols = ["id", *known.keys(), "extra_json", "updated_at"]
-        placeholders = ["1", *["?"] * len(known), "?", "CURRENT_TIMESTAMP"]
-        updates = [f"{k} = excluded.{k}" for k in (*known.keys(), "extra_json")]
-        updates.append("updated_at = CURRENT_TIMESTAMP")
-        # Column names come from the static METADATA_FIELDS tuple, never from user input.
-        sql = (
-            f"INSERT INTO project_metadata ({', '.join(cols)}) "  # noqa: S608
-            f"VALUES ({', '.join(placeholders)}) "
-            f"ON CONFLICT(id) DO UPDATE SET {', '.join(updates)}"
+        values = {"content": content, "updated_at": func.current_timestamp()}
+        stmt = (
+            sqlite_insert(ThesisRow)
+            .values(id=1, **values)
+            .on_conflict_do_update(index_elements=[ThesisRow.id], set_=values)
         )
-        async with self._db.connection() as conn:
-            await conn.execute(sql, (*known.values(), extra_json))
-            await conn.commit()
+        async with self._db.session() as session, session.begin():
+            await session.execute(stmt)

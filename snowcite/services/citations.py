@@ -1,6 +1,6 @@
-from typing import Any
-
 from snowcite.domain.citations import GAP_CHECK_MIN_WORDS, rewrite_cite_ids, uncited_sentences
+from snowcite.domain.records import ErrorResult
+from snowcite.domain.results import GapCheckResult, ModifiedSection, RewriteResult, SectionGaps
 from snowcite.storage.repositories import SectionRepository
 
 
@@ -10,9 +10,9 @@ class CitationService:
 
     async def gap_check(
         self, min_words: int = GAP_CHECK_MIN_WORDS, sections: list[str] | None = None
-    ):
+    ) -> GapCheckResult:
         """Uncited substantive sentences per section; a prompt for the author, not a lint."""
-        gaps: list[dict[str, Any]] = []
+        gaps: list[SectionGaps] = []
         total = 0
         for section in await self._sections.drafts():
             if sections is not None and section["title"] not in sections:
@@ -23,7 +23,9 @@ class CitationService:
                 total += len(found)
         return {"total_gaps": total, "min_words": min_words, "gaps": gaps}
 
-    async def rewrite(self, mapping: dict[str, int], sections: list[str] | None) -> dict[str, Any]:
+    async def rewrite(
+        self, mapping: dict[str, int], sections: list[str] | None
+    ) -> RewriteResult | ErrorResult:
         """Remap paper ids in every draft (after dedup/merge/deletion renumbering)."""
         if not mapping:
             return {"modified": [], "refs_replaced": 0, "sections_scanned": 0}
@@ -35,7 +37,7 @@ class CitationService:
         scanned = [
             s for s in await self._sections.drafts() if sections is None or s["title"] in sections
         ]
-        modified: list[dict[str, Any]] = []
+        modified: list[ModifiedSection] = []
         total = 0
         for section in scanned:
             new_text, replaced = rewrite_cite_ids(section["draft"], int_mapping)

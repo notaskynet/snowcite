@@ -1,5 +1,3 @@
-from typing import TypedDict
-
 from pydantic import BaseModel, Field, field_validator
 
 from snowcite.domain.dedup import normalize_doi
@@ -25,31 +23,3 @@ class Paper(BaseModel):
     @classmethod
     def _normalize_doi(cls, v: str | None) -> str | None:
         return normalize_doi(v)
-
-
-class PersistResult(TypedDict):
-    saved: int
-    duplicates: int
-    new_ids: list[int]
-    new_titles: list[str]
-
-
-class ApprovedPaper(TypedDict):
-    """Everything compile/export/rendering need about an approved paper."""
-
-    id: int
-    source: str
-    title: str
-    authors: list[str]
-    year: int | None
-    venue: str | None
-    doi: str | None
-    abstract: str | None
-    bibtex: str | None
-
-
-class DocumentSection(TypedDict):
-    """A section ready to render: title + body in the project's backend syntax."""
-
-    title: str
-    content: str

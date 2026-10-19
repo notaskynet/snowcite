@@ -1,11 +1,11 @@
 import asyncio
 import os
 import shutil
-from typing import Any
 
 import httpx
 
 from snowcite.app import mcp
+from snowcite.domain.results import EnvironmentReport, Probe
 from snowcite.domain.types import Severity  # re-exported for type callers
 from snowcite.settings import settings
 from snowcite.sources._http import get_client
@@ -18,7 +18,7 @@ HTTP_TOO_MANY_REQUESTS = 429
 _ = Severity  # keep import alive; narrows probe return values at boundary
 
 
-async def _probe_http(name: str, url: str, timeout: float = 6.0) -> dict[str, Any]:
+async def _probe_http(name: str, url: str, timeout: float = 6.0) -> Probe:
     try:
         r = await get_client().get(url, timeout=timeout)
     except (httpx.HTTPError, OSError) as e:
@@ -38,7 +38,7 @@ async def _probe_http(name: str, url: str, timeout: float = 6.0) -> dict[str, An
     }
 
 
-def _probe_binary(name: str, required: bool, hint: str) -> dict[str, Any]:
+def _probe_binary(name: str, required: bool, hint: str) -> Probe:
     path = shutil.which(name)
     if path is None:
         return {
@@ -49,7 +49,7 @@ def _probe_binary(name: str, required: bool, hint: str) -> dict[str, Any]:
     return {"name": name, "severity": "ok", "detail": path}
 
 
-def _probe_env(name: str, friendly: str, required: bool = False) -> dict[str, Any]:
+def _probe_env(name: str, friendly: str, required: bool = False) -> Probe:
     val = os.environ.get(name)
     if val:
         return {"name": friendly, "severity": "ok", "detail": f"{name} is set"}
@@ -60,7 +60,7 @@ def _probe_env(name: str, friendly: str, required: bool = False) -> dict[str, An
     }
 
 
-def _probe_project() -> dict[str, Any]:
+def _probe_project() -> Probe:
     root = find_project_root()
     if root is None:
         return {
@@ -74,7 +74,7 @@ def _probe_project() -> dict[str, Any]:
 
 
 @mcp.tool()
-async def check_environment() -> dict[str, Any]:
+async def check_environment() -> EnvironmentReport:
     """Diagnose tooling and connectivity; returns a structured report.
 
     Entries have `severity` ∈ {ok, warn, error}. `ok` → nothing to do. `warn`
@@ -106,7 +106,7 @@ async def check_environment() -> dict[str, Any]:
         return_exceptions=True,
     )
     probe_names = ("openalex", "semantic_scholar", "arxiv")
-    http_probes: list[dict[str, Any]] = []
+    http_probes: list[Probe] = []
     for name, res in zip(probe_names, http_probes_raw, strict=True):
         if isinstance(res, BaseException):
             http_probes.append(
@@ -119,7 +119,7 @@ async def check_environment() -> dict[str, Any]:
         else:
             http_probes.append(res)
 
-    all_entries = [*binary_results, *env_results, *http_probes, _probe_project()]
+    all_entries: list[Probe] = [*binary_results, *env_results, *http_probes, _probe_project()]
     errors = [e for e in all_entries if e["severity"] == "error"]
     warnings = [e for e in all_entries if e["severity"] == "warn"]
 

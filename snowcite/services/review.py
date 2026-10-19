@@ -1,7 +1,25 @@
-from typing import Any
-
 from snowcite.domain import rules
 from snowcite.domain.citations import count_cites
+from snowcite.domain.inputs import ClusterInput, NoteInput, ReviewDecision
+from snowcite.domain.records import (
+    Cluster,
+    CriteriaRecord,
+    ErrorResult,
+    NewNote,
+    PaperDetails,
+    PaperRecord,
+    UndoResult,
+)
+from snowcite.domain.results import (
+    ClusterError,
+    CriteriaSaved,
+    IndexedError,
+    ProgressView,
+    ReviewBatchResult,
+    SetStatusResult,
+    SummarySaved,
+    SummaryView,
+)
 from snowcite.storage.repositories import (
     NoteRepository,
     PaperRepository,
@@ -9,6 +27,18 @@ from snowcite.storage.repositories import (
     ReviewRepository,
     SectionRepository,
 )
+
+
+def _new_notes(notes: list[NoteInput]) -> list[NewNote]:
+    return [
+        {
+            "paper_id": None,
+            "cluster": n.get("cluster"),
+            "type": n["type"],
+            "text": n["text"].strip(),
+        }
+        for n in notes
+    ]
 
 
 class ReviewService:
@@ -26,12 +56,12 @@ class ReviewService:
         self._sections = sections
         self._project = project
 
-    # ─── Criteria and batches ───────────────────────────────────────────
+    # ─── Criteria and reading ───────────────────────────────────────────
 
-    async def set_criteria(self, criteria_text: str) -> dict[str, int]:
+    async def set_criteria(self, criteria_text: str) -> CriteriaSaved:
         return {"id": await self._reviews.add_criteria(criteria_text)}
 
-    async def get_criteria(self) -> dict[str, Any] | None:
+    async def get_criteria(self) -> CriteriaRecord | None:
         return await self._reviews.latest_criteria()
 
     async def list_papers(
@@ -46,13 +76,13 @@ class ReviewService:
         include_abstracts: bool,
         limit: int,
         offset: int,
-    ) -> list[dict[str, Any]]:
+    ) -> list[PaperRecord] | ClusterError:
         """Saved papers with review state; `cluster` narrows to a summary cluster's papers."""
         within: list[int] | None = None
         if cluster:
             resolved = await self._reviews.resolve_cluster_paper_ids(cluster)
             if isinstance(resolved, dict):
-                return [resolved]
+                return resolved
             within = resolved
         return await self._papers.find(
             status,
@@ -67,7 +97,13 @@ class ReviewService:
             offset,
         )
 
-    async def paper_details(self, paper_id: int) -> dict[str, Any]:
+    async def batch(
+        self, status: str | None, reviewed_by: str | None, limit: int
+    ) -> list[PaperRecord]:
+        """A compact batch of papers by review state (the next unreviewed ones, auto_low calls, ...)."""
+        return await self._papers.find(status=status, reviewed_by=reviewed_by, limit=limit)
+
+    async def paper_details(self, paper_id: int) -> PaperDetails | ErrorResult:
         paper = await self._papers.details(paper_id)
         return paper if paper is not None else {"error": f"paper {paper_id} not found"}
 
@@ -80,31 +116,32 @@ class ReviewService:
         reason: str,
         note: str | None = None,
         reviewed_by: str = "auto_high",
-        notes: list[dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+        notes: list[NoteInput] | None = None,
+    ) -> SetStatusResult:
+        """Set one status for several papers, with a history entry per paper."""
         if notes:
             error = rules.validate_inline_notes(notes, len(paper_ids))
             if error:
                 return {"updated": 0, "error": error}
 
-        result = await self._reviews.set_status(paper_ids, status, reason, note, reviewed_by, notes)
-        out: dict[str, Any] = {"updated": result["updated"]}
+        result = await self._reviews.set_status(
+            paper_ids, status, reason, note, reviewed_by, _new_notes(notes) if notes else None
+        )
+        out: SetStatusResult = {"updated": result["updated"]}
         if result["skipped"]:
             out["skipped_invalid_ids"] = result["skipped"]
         if result["note_ids"]:
             out["note_ids"] = result["note_ids"]
         return out
 
-    async def review_batch(self, decisions: list[dict[str, Any]]) -> dict[str, Any]:
+    async def review_batch(self, decisions: list[ReviewDecision]) -> ReviewBatchResult:
         """Apply a batch of decisions; valid ones go through, invalid ones are reported by index.
 
-        A decision is `{paper_id | paper_ids, status, reason, reviewed_by?, note?, notes?}`.
         Approving or "maybe"-ing a paper must leave something in the knowledge graph:
         either `notes` containing a claim/finding (single paper only) or per-paper
         notes recorded earlier. Rejected papers take no notes.
         """
-        updated = 0
-        errors: list[dict[str, Any]] = []
+        out: ReviewBatchResult = {"updated": 0, "errors": []}
         skipped: list[int] = []
         note_ids: list[int] = []
         for idx, decision in enumerate(decisions):
@@ -115,7 +152,7 @@ class ReviewService:
             if error is None and rules.requires_extraction(decision["status"]):
                 error = await self._extraction_error(decision, ids)
             if error:
-                errors.append({"index": idx, "error": error})
+                out["errors"].append(IndexedError(index=idx, error=error))
                 continue
             result = await self.set_status(
                 ids,
@@ -126,19 +163,18 @@ class ReviewService:
                 decision.get("notes"),
             )
             if "error" in result:
-                errors.append({"index": idx, "error": result["error"]})
+                out["errors"].append(IndexedError(index=idx, error=result["error"]))
                 continue
-            updated += result["updated"]
+            out["updated"] += result["updated"]
             skipped += result.get("skipped_invalid_ids", [])
             note_ids += result.get("note_ids", [])
-        out: dict[str, Any] = {"updated": updated, "errors": errors}
         if skipped:
             out["skipped_invalid_ids"] = skipped
         if note_ids:
             out["note_ids"] = note_ids
         return out
 
-    async def _extraction_error(self, decision: dict[str, Any], ids: list[int]) -> str | None:
+    async def _extraction_error(self, decision: ReviewDecision, ids: list[int]) -> str | None:
         notes = decision.get("notes")
         if notes:
             if not rules.validate_extraction(notes):
@@ -163,7 +199,7 @@ class ReviewService:
         year_to: int | None,
         reviewed_by: str,
         limit: int | None,
-    ) -> dict[str, Any]:
+    ) -> SetStatusResult:
         cluster_ids: list[int] | None = None
         if cluster is not None:
             resolved = await self._reviews.resolve_cluster_paper_ids(cluster)
@@ -181,18 +217,18 @@ class ReviewService:
         # Same path as a manual decision, so every paper gets its audit entry.
         return await self.set_status(target_ids, new_status, reason, None, reviewed_by, None)
 
-    async def undo_last(self) -> dict[str, Any]:
+    async def undo_last(self) -> UndoResult:
         return await self._reviews.undo_last()
 
     # ─── Progress and summary ───────────────────────────────────────────
 
-    async def progress(self) -> dict[str, Any]:
+    async def progress(self) -> ProgressView:
         counts = await self._reviews.live_counts()
         targets = await self._project.targets()
 
         document_sections = await self._sections.load_document_sections()
-        words = sum(len((s["content"] or "").split()) for s in document_sections)
-        cites = sum(count_cites(s["content"] or "") for s in document_sections)
+        words = sum(len(s["content"].split()) for s in document_sections)
+        cites = sum(count_cites(s["content"]) for s in document_sections)
         density = round(cites * 100 / words, 2) if words else 0.0
 
         return {
@@ -204,18 +240,26 @@ class ReviewService:
                 "sections_with_content": len(document_sections),
             },
             "targets": targets,
-            "warnings": rules.progress_warnings(counts.get("approved", 0), targets, words, density),
+            "warnings": rules.progress_warnings(counts["approved"], targets, words, density),
         }
 
-    async def save_summary(self, summary: str, clusters: list[dict[str, Any]]) -> dict[str, str]:
-        await self._reviews.save_summary(summary, clusters)
+    async def save_summary(self, summary: str, clusters: list[ClusterInput]) -> SummarySaved:
+        normalized: list[Cluster] = [
+            {
+                "topic": c["topic"],
+                "paper_ids": c.get("paper_ids", []),
+                "count": c.get("count", len(c.get("paper_ids", []))),
+            }
+            for c in clusters
+        ]
+        await self._reviews.save_summary(summary, normalized)
         return {"status": "saved"}
 
-    async def get_summary(self) -> dict[str, Any] | None:
+    async def get_summary(self) -> SummaryView | None:
         data = await self._reviews.load_summary()
         if data is None:
             return None
-        data["warnings"] = rules.summary_warnings(
+        warnings = rules.summary_warnings(
             data["stale"], data["counts_snapshot"], data["counts_live"]
         )
-        return data
+        return {**data, "warnings": warnings}

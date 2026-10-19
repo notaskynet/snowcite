@@ -1,7 +1,7 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.records import ErrorResult, PaperDetails, PaperRecord
+from snowcite.domain.results import ClusterError, SearchPreview, SearchSummary
 from snowcite.domain.types import Direction, ReviewedBy, Source, Status
 
 
@@ -14,7 +14,7 @@ async def search_papers(
     year_to: int | None = None,
     auto_save: bool = True,
     abstract_max_chars: int = 0,
-) -> dict[str, Any]:
+) -> SearchSummary | SearchPreview:
     """Search arXiv / Semantic Scholar / OpenAlex / Crossref / PubMed in parallel, dedup by DOI/title.
 
     By default (auto_save=True) persists new papers to the DB and returns a compact
@@ -40,7 +40,7 @@ async def snowball(
     limit: int = 20,
     auto_save: bool = True,
     abstract_max_chars: int = 0,
-) -> dict[str, Any]:
+) -> SearchSummary | SearchPreview:
     """Fetch references or citations for several papers; by default persist the new ones.
 
     Uses the Semantic Scholar graph; arXiv / OpenAlex papers are resolved through their
@@ -68,7 +68,7 @@ async def papers(
     include_abstracts: bool = False,
     limit: int = 20,
     offset: int = 0,
-) -> list[dict[str, Any]]:
+) -> list[PaperRecord] | ClusterError:
     """List saved papers with their review state. All filters are AND-joined.
 
     Compact records by default — title / year / venue / authors / doi / review fields,
@@ -94,7 +94,7 @@ async def papers(
 
 
 @mcp.tool()
-async def paper(paper_id: int) -> dict[str, Any]:
+async def paper(paper_id: int) -> PaperDetails | ErrorResult:
     """Full record for one paper: abstract, review state, stored citation-edge counts.
 
     Summarise the abstract in one or two neutral sentences for the user; don't paste it.

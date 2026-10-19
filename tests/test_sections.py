@@ -1,6 +1,5 @@
 """Phase 3: sections as entities."""
 
-import json
 from pathlib import Path
 
 import pytest
@@ -123,16 +122,9 @@ async def test_delete_cascades_to_children(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_get_outline_inputs(tmp_project: Path):
-    async with container.db.connection() as conn:
-        await conn.execute("INSERT INTO thesis (id, content) VALUES (1, 'thesis text')")
-        await conn.execute(
-            "INSERT INTO review_summary "
-            "(id, summary, clusters_json, counts_snapshot_json, stale) "
-            "VALUES (1, 's', ?, '{}', 0)",
-            (json.dumps([{"topic": "T1", "paper_ids": [], "count": 0}]),),
-        )
-        await conn.execute("INSERT INTO review_criteria (criteria_text) VALUES ('include foo')")
-        await conn.commit()
+    await container.project.save_thesis("thesis text")
+    await container.reviews.save_summary("s", [{"topic": "T1", "paper_ids": [], "count": 0}])
+    await container.reviews.add_criteria("include foo")
     r = await get_outline_inputs()
     assert r["thesis"] == "thesis text"
     assert r["clusters"][0]["topic"] == "T1"

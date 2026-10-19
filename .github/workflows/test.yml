@@ -22,5 +22,11 @@ jobs:
       - name: Install deps (incl. dev group)
         run: uv sync --group dev
 
+      - name: ruff
+        run: uv run ruff check
+
+      - name: mypy
+        run: uv run mypy
+
       - name: pytest
         run: uv run pytest -v

@@ -1,6 +1,5 @@
 import re
 from pathlib import Path
-from typing import Any
 
 import httpx
 from pydantic import ValidationError
@@ -9,6 +8,8 @@ from snowcite.app import mcp
 from snowcite.container import container
 from snowcite.domain.dedup import normalize_doi
 from snowcite.domain.models import Paper
+from snowcite.domain.records import ErrorResult
+from snowcite.domain.results import ImportResult
 from snowcite.logging import log
 from snowcite.settings import settings
 from snowcite.sources._http import http_get
@@ -160,6 +161,14 @@ def parse_bibtex(text: str) -> list[Paper]:
 _RIS_LINE_RE = re.compile(r"^([A-Z][A-Z0-9])  -\s*(.*)$")
 
 
+def _first(record: dict[str, list[str]], *tags: str) -> str | None:
+    """First value of the first tag that is present in a parsed RIS record."""
+    for tag in tags:
+        if record.get(tag):
+            return record[tag][0]
+    return None
+
+
 def parse_ris(text: str) -> list[Paper]:
     papers: list[Paper] = []
     current: dict[str, list[str]] = {}
@@ -190,14 +199,12 @@ def _ris_to_paper(record: dict[str, list[str]]) -> Paper | None:
     for tag in ("AU", "A1", "A2", "A3"):
         authors.extend(record.get(tag, []))
     # DOI under DO; year under PY / Y1 (may include month, take the first 4 digits).
-    doi = normalize_doi((record.get("DO") or [None])[0])
+    doi = normalize_doi(_first(record, "DO"))
     year_raw = (record.get("PY") or record.get("Y1") or [""])[0]
     year_match = re.match(r"\d{4}", year_raw)
     year = int(year_match.group(0)) if year_match else None
-    venue = (
-        record.get("JO") or record.get("JF") or record.get("T2") or record.get("BT") or [None]
-    )[0]
-    abstract = (record.get("AB") or record.get("N2") or [None])[0]
+    venue = _first(record, "JO", "JF", "T2", "BT")
+    abstract = _first(record, "AB", "N2")
     try:
         return Paper(
             source="crossref",
@@ -271,7 +278,7 @@ async def _enrich_abstracts(papers: list[Paper]) -> list[Paper]:
 # ─── Public MCP tools ───────────────────────────────────────────────────────
 
 
-async def _import_core(papers: list[Paper], enrich: bool) -> dict[str, Any]:
+async def _import_core(papers: list[Paper], enrich: bool) -> ImportResult:
     if enrich:
         papers = await _enrich_abstracts(papers)
     persisted = await container.papers.persist(papers)
@@ -293,7 +300,7 @@ async def _import_core(papers: list[Paper], enrich: bool) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def import_refs(file_path: str, enrich_abstracts: bool = True) -> dict[str, Any]:
+async def import_refs(file_path: str, enrich_abstracts: bool = True) -> ImportResult | ErrorResult:
     """Import papers from a BibTeX (`.bib`) or RIS (`.ris`) reference-manager export.
 
     DOI dedup applies. If `enrich_abstracts=True` (default), papers without an abstract

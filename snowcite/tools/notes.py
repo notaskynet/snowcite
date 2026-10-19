@@ -1,12 +1,13 @@
-from typing import Any
-
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.inputs import NewNoteInput
+from snowcite.domain.records import ErrorResult, NoteRecord
+from snowcite.domain.results import NoteDeleted, NoteLinked, NotesAdded, NoteUpdated
 from snowcite.domain.types import NoteLinkKind, NoteType
 
 
 @mcp.tool()
-async def add_notes(notes: list[dict[str, Any]]) -> dict[str, Any]:
+async def add_notes(notes: list[NewNoteInput]) -> NotesAdded:
     """Batch-insert notes. Each item: {type, text, paper_id?, cluster?}.
 
     `type` ∈ {claim, finding, method, limitation, gap, contradiction, consensus,
@@ -28,7 +29,7 @@ async def get_notes(
     cluster: str | None = None,
     type: NoteType | None = None,  # noqa: A002 — field name consistency across notes API
     limit: int = 200,
-) -> list[dict[str, Any]]:
+) -> list[NoteRecord]:
     """Fetch notes filtered by paper, cluster, and/or type. Newest first.
 
     Without filters returns every note up to `limit`. Use this before drafting a
@@ -44,7 +45,7 @@ async def update_note(
     type: NoteType | None = None,  # noqa: A002 — field name consistency across notes API
     cluster: str | None = None,
     delete: bool = False,
-) -> dict[str, Any]:
+) -> NoteUpdated | NoteDeleted | ErrorResult:
     """Edit or delete an existing note. Pass only the fields to change.
 
     `delete=True` removes the note and any links touching it (idempotent — a missing
@@ -65,7 +66,7 @@ async def link_notes(
     from_note_id: int,
     to_note_id: int,
     kind: NoteLinkKind,
-) -> dict[str, Any]:
+) -> NoteLinked:
     """Connect two notes with a typed edge.
 
     `kind` ∈ {supports, contradicts, extends, derived_from}. Used during

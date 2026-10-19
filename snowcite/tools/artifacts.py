@@ -2,6 +2,8 @@ from typing import Any
 
 from snowcite.app import mcp
 from snowcite.container import container
+from snowcite.domain.records import ArtifactRecord, ErrorResult
+from snowcite.domain.results import ArtifactAdded, ArtifactBrief, ArtifactDeleted, ArtifactIncluded
 from snowcite.domain.types import ArtifactType
 
 
@@ -13,7 +15,7 @@ async def add_artifact(
     path: str | None = None,
     summary: str | None = None,
     metadata: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> ArtifactAdded | ErrorResult:
     """Register a research artifact from literal `content` or from a text file at `path`.
 
     `type`: interview | code | document | note | dataset.
@@ -25,13 +27,13 @@ async def add_artifact(
     Only UTF-8 text is supported; convert PDFs/docx first. Returns
     `{id, type, label, chars, citation_label}`.
     """
-    if (content is None) == (path is None):
-        return {"error": "pass exactly one of content or path"}
-    if path is not None:
+    if path is not None and content is None:
         return await container.artifact_service.import_file(path, type, label, summary, metadata)
-    if not label:
-        return {"error": "label is required with inline content"}
-    return await container.artifact_service.add_inline(type, label, content, summary, metadata)
+    if content is not None and path is None:
+        if not label:
+            return {"error": "label is required with inline content"}
+        return await container.artifact_service.add_inline(type, label, content, summary, metadata)
+    return {"error": "pass exactly one of content or path"}
 
 
 @mcp.tool()
@@ -39,7 +41,7 @@ async def get_artifacts(
     artifact_id: int | None = None,
     type: ArtifactType | None = None,  # noqa: A002
     included_only: bool = False,
-) -> list[dict[str, Any]] | dict[str, Any] | None:
+) -> list[ArtifactBrief] | ArtifactRecord | None:
     """One artifact with its full content (to quote), or a listing without bodies.
 
     With `artifact_id`: the full record, or None. Without: briefs (id, type, label,
@@ -55,7 +57,7 @@ async def update_artifact(
     artifact_id: int,
     included: bool | None = None,
     delete: bool = False,
-) -> dict[str, Any]:
+) -> ArtifactDeleted | ArtifactIncluded | ErrorResult:
     """Include/exclude an artifact, or delete it for good.
 
     Excluded artifacts stay in the DB but are hidden from
