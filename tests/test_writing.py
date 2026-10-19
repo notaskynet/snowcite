@@ -1,4 +1,4 @@
-"""PRISMA, overview table, thesis, and citation checks over section drafts."""
+"""PRISMA counts, thesis, and citation checks over section drafts."""
 
 from pathlib import Path
 
@@ -10,8 +10,7 @@ from snowcite.tools.review import set_review_status
 from snowcite.tools.sections import get_section
 from snowcite.tools.writing import (
     gap_check,
-    generate_overview_table,
-    generate_prisma_flow,
+    get_prisma_counts,
     get_thesis,
     rewrite_citations,
     save_thesis,
@@ -24,81 +23,23 @@ async def _draft(title: str, text: str) -> int:
     return sec["id"]
 
 
-# ─── PRISMA flow ────────────────────────────────────────────────────────────
+# ─── PRISMA counts ──────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_prisma_flow_reflects_review_history(tmp_project: Path):
+async def test_prisma_counts_reflect_review_history(tmp_project: Path):
     await container.papers.persist(
         [Paper(source="arxiv", source_id=str(i), title=f"p{i}") for i in range(1, 5)]
     )
     await set_review_status([1, 2], "approved", reason="r", reviewed_by="auto_high")
-    await set_review_status([3], "rejected", reason="off-topic", reviewed_by="auto_high")
-    await set_review_status([4], "rejected", reason="off-topic", reviewed_by="auto_high")
+    await set_review_status([3, 4], "rejected", reason="off-topic", reviewed_by="auto_high")
 
-    r = await generate_prisma_flow(backend="typst")
-    counts = r["counts"]
+    counts = await get_prisma_counts()
     assert counts["identified"] == 4
     assert counts["screened"] == 4
     assert counts["included"] == 2
     assert counts["excluded_total"] == 2
-    assert r["snippet"].startswith("#figure")
-
-
-@pytest.mark.asyncio
-async def test_prisma_flow_latex_backend(tmp_project: Path):
-    r = await generate_prisma_flow(backend="latex")
-    assert r["backend"] == "latex"
-    assert r["snippet"].startswith(r"\begin{figure}")
-    assert "tikzpicture" in r["snippet"]
-
-
-# ─── Overview table ─────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_overview_table_typst_contains_approved_papers(tmp_project: Path):
-    await container.papers.persist(
-        [
-            Paper(
-                source="openalex",
-                source_id="1",
-                title="Paper A",
-                authors=["Alice Smith"],
-                year=2023,
-                venue="ICML",
-            ),
-            Paper(
-                source="openalex",
-                source_id="2",
-                title="Paper B",
-                authors=["Bob Jones"],
-                year=2024,
-                venue="Nature",
-            ),
-        ]
-    )
-    await set_review_status([1, 2], "approved", reason="r", reviewed_by="auto_high")
-
-    r = await generate_overview_table(backend="typst")
-    assert r["rows"] == 2
-    snippet = r["snippet"]
-    assert snippet.startswith("#table(")
-    assert "Paper A" in snippet
-    assert "Paper B" in snippet
-    assert "Smith" in snippet  # last-name only for author column
-
-
-@pytest.mark.asyncio
-async def test_overview_table_latex_longtable(tmp_project: Path):
-    await container.papers.persist(
-        [Paper(source="openalex", source_id="1", title="T", authors=["J Doe"], year=2024)]
-    )
-    await set_review_status([1], "approved", reason="r", reviewed_by="auto_high")
-
-    r = await generate_overview_table(backend="latex", columns=["year", "title"])
-    assert r["snippet"].startswith(r"\begin{longtable}")
-    assert "Year & Title" in r["snippet"]
+    assert counts["excluded_by_reason"] == [{"reason": "off-topic", "count": 2}]
 
 
 @pytest.mark.asyncio

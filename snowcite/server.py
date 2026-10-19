@@ -6,7 +6,6 @@ See TODO.md for the roadmap and CLAUDE.md for the review workflow.
 import asyncio
 import atexit
 import logging
-import shutil
 import sys
 
 from snowcite.app import mcp
@@ -18,7 +17,6 @@ from snowcite.storage.projects import NoProjectError
 # shadows a Python builtin so it gets an alias.
 from snowcite.tools import (  # noqa: F401
     artifacts as artifact_tools,
-    compile as compile_tools,
     critique as critique_tools,
     doctor,
     export,
@@ -49,14 +47,6 @@ def _configure_logging() -> None:
     logger.setLevel(logging.INFO)
 
 
-def _check_tectonic() -> None:
-    if shutil.which("tectonic") is None:
-        logging.getLogger("snowcite").warning(
-            "tectonic not found — `compile_pdf` will fail in LaTeX mode. "
-            "Install with `brew install tectonic`."
-        )
-
-
 def _try_init_db() -> None:
     """Initialize DB if a project exists in cwd; skip silently otherwise.
 
@@ -85,7 +75,6 @@ def main() -> None:
     _configure_logging()
     atexit.register(_shutdown_http_client)
     _try_init_db()
-    _check_tectonic()
     mcp.run()
 
 

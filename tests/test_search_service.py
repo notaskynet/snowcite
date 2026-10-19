@@ -79,3 +79,19 @@ async def test_expand_citations_resolves_via_doi_and_reports_errors(tmp_project:
 
     assert "error" in await svc.expand_citations(2, "references", 10, True, 0)
     assert "not found" in (await svc.expand_citations(99, "references", 10, True, 0))["error"]
+
+
+async def test_search_without_sources_uses_project_discipline(tmp_project: Path):
+    await container.project.save_metadata({"discipline": "history"})
+    p = Paper(source="openalex", source_id="1", title="T")
+    used: list[str] = []
+
+    class Spy(FakeSource):
+        async def search(self, query, limit=20, year_from=None, year_to=None):
+            used.append(self.name)
+            return await super().search(query, limit, year_from, year_to)
+
+    sources = {n: Spy(n, [p]) for n in ("arxiv", "semantic_scholar", "openalex", "crossref")}
+    svc = _service(sources, FakeCitations(None, []))
+    await svc.search("q")
+    assert sorted(used) == ["crossref", "openalex", "semantic_scholar"]  # no arxiv for history

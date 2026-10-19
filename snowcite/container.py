@@ -1,9 +1,7 @@
 """Wiring: one place that builds the database, repositories and services."""
 
-from snowcite.render.compiler import Compiler
 from snowcite.services import (
     ArtifactService,
-    BuildService,
     CitationService,
     NoteService,
     ProjectService,
@@ -72,13 +70,11 @@ class Container:
         self.workflow = WorkflowService(
             self.reviews,
             self.notes,
-            self.sections,
             self.project,
             self.review_service,
             self.section_service,
             self.synthesis,
         )
-        self.build = BuildService(self.papers, self.sections, self.project, Compiler())
 
 
 container = Container()

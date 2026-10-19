@@ -1,7 +1,7 @@
 [project]
 name = "snowcite"
 version = "0.4.0"
-description = "MCP server for systematic literature review — search, snowball, review, write, compile to PDF."
+description = "MCP server for systematic literature review — search, snowball, review, notes and synthesis."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
@@ -16,7 +16,6 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
-    "Topic :: Text Processing :: Markup :: LaTeX",
 ]
 dependencies = [
     "aiosqlite>=0.22.1",

@@ -31,14 +31,14 @@ Guide for Claude Code sessions in this project.
 
 **Language:** {{ language }}
 **Formatting standard:** {{ standard }}
-**Backend:** {{ backend }}
 **Review strictness:** {{ review_strictness }}
 
 ## What this is
 
 `snowcite` is an MCP server for systematic literature review. Search across scholarly
-databases, snowball through citations, review papers through chat (not UI), generate
-{{ backend | upper }} documents, compile to PDF.
+databases, snowball through citations, review papers through chat (not UI), keep a
+notes graph and cross-paper synthesis. The document itself is written by you, with the
+writing skills, from that material — snowcite builds no PDF.
 
 ## Architectural invariant
 
@@ -68,7 +68,7 @@ withholds the next review batch until the summary is saved and blocks the outlin
 until `auto_low` decisions are confirmed.
 
 If it reports `project_active: False`, collect metadata (author, language,
-discipline, standard, backend, optionally supervisor/institution/deadline) via
+discipline, standard, optionally supervisor/institution/deadline) via
 `AskUserQuestion` and persist with `init_project(metadata=..., update=True)`.
 
 ## Thesis-first entry (optional)
@@ -170,12 +170,12 @@ Write in {{ language }} natively, don't translate word-for-word:
 - Do not translate method/system names: GCG, SmoothLLM, PAIR, HarmBench, etc.
 - **On doubt about a term — ask the user.** Apply the decision consistently.
 
-## Document generation
+## Writing from the corpus
 
-- Backend: **{{ backend }}**, standard: **{{ standard }}**
-- `write_document(sections, title, author, backend="{{ backend }}", standard="{{ standard }}", language="{{ language }}")`
-- `compile_pdf(doc_path)` — auto-detects backend from file extension
-- Don't manually change backend mid-project without `set_backend(... , confirm_wipe_sections=True)`
+snowcite stores no document source. Pull material with `get_papers_for_writing(cluster=...)`,
+`get_cluster_notes(cluster)` and section tools; write the text yourself in the project's
+formatting standard ({{ standard }}) and cite approved papers as `[N]` (their snowcite id).
+`export_bibtex()` writes `references.bib` for the approved set.
 
 ## Research artifacts (interviews, code, notes, …)
 
@@ -204,13 +204,8 @@ section text, followed by the citation label. Never paraphrase the quote
 and then attribute it to a participant — the academic-reviewer subagent
 will flag that as quote fabrication.
 
-**Code inclusion:** `include_code_artifact(artifact_id)` emits the
-backend-specific snippet (`\lstinputlisting` for LaTeX, `#raw(read(...))`
-for Typst). Paste it into the relevant section.
-
 **What snowcite does not do:** no transcription from audio, no PDF/docx
-parsing (convert first), no data analysis. Figures from pandas/matplotlib
-etc. are inserted manually as `#image("plot.png")` / `\includegraphics`.
+parsing (convert first), no data analysis, no document or PDF building.
 
 ## Review subagents
 
@@ -248,7 +243,6 @@ they do rewrite, that's a bug in the agent prompt; report it.
 - **No Zotero** integration — neither API nor CSL-JSON import.
 - **No PDF parsing** — use abstracts from source APIs.
 - **No borderline recommendations** — facts only, user decides.
-- **No system TeXLive** — tectonic (LaTeX) or typst.
 - **No drafting a section without notes for its scope.** Empty `get_section_critique_inputs(...).notes` means the section has no graph to support it — review more papers into those clusters or narrow scope.
 - **No auto-`research_section` from inside critique.** Critique reports gaps; user decides on more search.
 - **No invented cluster names** in notes or section scope — clusters must come from `review_summary`.
@@ -256,19 +250,12 @@ they do rewrite, that's a bug in the agent prompt; report it.
 
 ## Stuck detection
 
-If you fail to resolve the same problem (compile error, search issue, etc.) **twice**:
+If you fail to resolve the same problem (search failure, parsing issue, etc.) **twice**:
 
 - **Stop.** Do not iterate further.
 - Summarize what you tried and why it failed.
 - Ask the user how to proceed.
 
-**Specifically: after a failed `compile_pdf`, do NOT reach for `sed` / `grep` /
-manual edits on the generated `.tex` / `.typ` / `.yml` / `.bib`.** Those are
-derived artifacts — fix the root cause through MCP tools (`write_document`,
-`rewrite_citations`, `set_backend`, etc.) instead. If no MCP tool covers the
-change you need, tell the user so the gap can be closed, rather than
-side-channel-patching the output. Repeated hand-edits to derived files
-accumulate drift that later tool runs silently overwrite.
 
 ## Conventions
 

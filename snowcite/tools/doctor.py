@@ -1,6 +1,6 @@
 """Doctor — diagnose the local environment.
 
-Checks external binaries (typst, tectonic, pandoc, uv), reachability of the
+Checks external binaries (uv), reachability of the
 scholarly APIs snowcite talks to, and relevant env vars. Returns a structured
 report so Claude can see "what's broken" without running a bunch of Bash
 probes by hand.
@@ -86,13 +86,10 @@ async def check_environment() -> dict[str, Any]:
     """Diagnose tooling and connectivity; returns a structured report.
 
     Entries have `severity` ∈ {ok, warn, error}. `ok` → nothing to do. `warn`
-    → a feature degrades (missing pandoc → no `.docx` export). `error` → a
+    → a feature degrades (e.g. a source API is unreachable). `error` → a
     blocker the user should fix before the relevant workflow works.
     """
     binaries = [
-        ("typst", False, "brew install typst (needed for Typst backend)"),
-        ("tectonic", False, "brew install tectonic (needed for LaTeX backend)"),
-        ("pandoc", False, "brew install pandoc (needed for docx export)"),
         ("uv", True, "install via https://docs.astral.sh/uv/"),
     ]
     env_checks = [

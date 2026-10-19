@@ -70,7 +70,6 @@ plugins:
             Getting started: Начало работы
             Workflow: Workflow
             Artifacts: Артефакты
-            Backends: Бэкенды
             Troubleshooting: Диагностика
 
 nav:
@@ -79,5 +78,4 @@ nav:
   - Getting started: getting-started.md
   - Workflow: workflow.md
   - Artifacts: artifacts.md
-  - Backends: backends.md
   - Troubleshooting: troubleshooting.md

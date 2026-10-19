@@ -6,10 +6,6 @@ import pytest
 
 from snowcite.container import container
 from snowcite.domain.artifacts import citation_label
-from snowcite.render.snippets import (
-    include_code,
-    primary_sources_appendix,
-)
 from snowcite.tools.artifacts import (
     add_artifact_inline,
     delete_artifact,
@@ -17,10 +13,6 @@ from snowcite.tools.artifacts import (
     import_artifact,
     list_artifacts,
     set_artifact_included,
-)
-from snowcite.tools.writing import (
-    generate_primary_sources_appendix,
-    include_code_artifact,
 )
 
 
@@ -122,107 +114,6 @@ async def test_delete_artifact(tmp_project: Path):
     out = await delete_artifact(r["id"])
     assert out["deleted"] is True
     assert await get_artifact(r["id"]) is None
-
-
-# ─── Rendering helpers ──────────────────────────────────────────────────────
-
-
-def test_include_code_typst_uses_raw_read_when_path_set():
-    artifact = {
-        "id": 1,
-        "type": "code",
-        "label": "auth.py",
-        "source_path": "/abs/path/auth.py",
-        "content": "ignored when path is set",
-        "summary": None,
-        "metadata": {"language": "python"},
-        "included": True,
-        "created_at": "",
-    }
-    out = include_code(artifact, "typst")  # type: ignore[arg-type]
-    assert 'raw(read("/abs/path/auth.py")' in out
-    assert 'lang: "python"' in out
-
-
-def test_include_code_latex_uses_lstinputlisting():
-    artifact = {
-        "id": 1,
-        "type": "code",
-        "label": "auth.py",
-        "source_path": "/abs/path/auth.py",
-        "content": "",
-        "summary": None,
-        "metadata": {},
-        "included": True,
-        "created_at": "",
-    }
-    out = include_code(artifact, "latex")  # type: ignore[arg-type]
-    assert r"\lstinputlisting" in out
-    assert "/abs/path/auth.py" in out
-
-
-def test_primary_sources_appendix_skips_excluded_and_empty():
-    assert primary_sources_appendix([], "typst") == ""
-    items = [
-        {
-            "id": 1,
-            "type": "interview",
-            "label": "P01",
-            "source_path": None,
-            "content": "",
-            "summary": "Pilot",
-            "metadata": {},
-            "included": True,
-            "created_at": "",
-        },
-        {
-            "id": 2,
-            "type": "note",
-            "label": "n1",
-            "source_path": None,
-            "content": "",
-            "summary": None,
-            "metadata": {},
-            "included": False,
-            "created_at": "",
-        },
-    ]
-    out = primary_sources_appendix(items, "typst")  # type: ignore[arg-type]
-    assert "[I:1]" in out
-    assert "P01" in out
-    assert "n1" not in out  # excluded record skipped
-    assert "Pilot" in out
-
-
-# ─── MCP tools for rendering ────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_include_code_artifact_typst(tmp_project: Path):
-    src = tmp_project / "auth.py"
-    src.write_text("print('hi')", encoding="utf-8")
-    r = await import_artifact(
-        path=str(src), type="code", label="auth", metadata={"language": "python"}
-    )
-    out = await include_code_artifact(r["id"], backend="typst")
-    assert "snippet" in out
-    assert 'lang: "python"' in out["snippet"]
-
-
-@pytest.mark.asyncio
-async def test_include_code_artifact_rejects_non_code(tmp_project: Path):
-    r = await add_artifact_inline(type="note", label="n", content="x")
-    out = await include_code_artifact(r["id"])
-    assert "error" in out
-
-
-@pytest.mark.asyncio
-async def test_generate_primary_sources_appendix_entries_count(tmp_project: Path):
-    await add_artifact_inline(type="interview", label="P01", content="...")
-    await add_artifact_inline(type="note", label="Idea", content="...")
-    out = await generate_primary_sources_appendix(backend="typst")
-    assert out["entries"] == 2
-    assert "P01" in out["snippet"]
 
 
 @pytest.mark.asyncio

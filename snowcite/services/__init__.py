@@ -1,5 +1,4 @@
 from snowcite.services.artifacts import ArtifactService
-from snowcite.services.build import BuildService
 from snowcite.services.citations import CitationService
 from snowcite.services.notes import NoteService
 from snowcite.services.project import ProjectService
@@ -12,7 +11,6 @@ from snowcite.services.workflow import WorkflowService
 
 __all__ = [
     "ArtifactService",
-    "BuildService",
     "CitationService",
     "NoteService",
     "ProjectService",

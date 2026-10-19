@@ -4,7 +4,6 @@ from dataclasses import replace
 from pathlib import Path
 
 from snowcite.container import container
-from snowcite.domain import rules
 from snowcite.domain.models import Paper
 from snowcite.domain.phases import WorkflowState, decide
 from snowcite.tools.review import save_review_summary, set_review_criteria, set_review_status
@@ -41,34 +40,8 @@ def test_low_confidence_blocks_synthesis_and_outline():
 
 def test_synthesis_only_when_notes_exist_but_none_cross_paper():
     assert decide(replace(BASE, per_paper_notes=3)).phase == "synthesis"
-    assert decide(replace(BASE, per_paper_notes=3, cross_paper_notes=1)).phase == "outline"
-    assert decide(BASE).phase == "outline"  # no notes at all: don't loop on synthesis
-
-
-def test_late_phases():
-    s = replace(BASE, cross_paper_notes=1, sections_total=2)
-    assert decide(replace(s, has_unfinished_section=True)).phase == "writing"
-    assert decide(s).phase == "build"
-    assert decide(replace(s, document_current=True)).phase == "done"
-
-
-def test_next_section_action():
-    sec = {"draft": "", "status": "outline", "severity": {"blockers": 0}, "critique_iterations": 0}
-    assert rules.next_section_action(sec) == "draft"
-    assert rules.next_section_action({**sec, "draft": "x", "status": "drafting"}) == "critique"
-    crit = {**sec, "draft": "x", "status": "critiqued"}
-    assert rules.next_section_action({**crit, "severity": {"blockers": 2}}) == "revise"
-    assert (
-        rules.next_section_action(
-            {
-                **crit,
-                "severity": {"blockers": 2},
-                "critique_iterations": rules.MAX_CRITIQUE_ITERATIONS,
-            }
-        )
-        == "finish"
-    )
-    assert rules.next_section_action(crit) == "finish"
+    assert decide(replace(BASE, per_paper_notes=3, cross_paper_notes=1)).phase == "done"
+    assert decide(BASE).phase == "done"  # no notes at all: don't loop on synthesis
 
 
 # ─── next_step(): integration ───────────────────────────────────────────────
@@ -129,37 +102,20 @@ async def test_review_batch_withheld_until_summary_then_low_confidence_gate(tmp_
     assert (await next_step())["phase"] == "synthesis"
 
 
-async def test_writing_requires_notes_then_walks_the_critique_loop(tmp_project: Path):
+async def test_done_payload_hands_over_material_for_writing(tmp_project: Path):
     await set_review_criteria("c")
     await container.papers.persist([Paper(source="arxiv", source_id="1", title="P")])
     await set_review_status([1], "approved", reason="r", reviewed_by="auto_high")
     await save_review_summary("s", [{"topic": "T", "paper_ids": [1], "count": 1}])
-    sec = await container.section_service.create("Intro", {"clusters": ["T"]}, None, None)
-    sid = sec["id"]
-
-    r = await next_step()
-    assert r["phase"] == "writing" and r["payload"]["action"] == "draft"
-    assert "no notes" in r["why"]  # gate: can't draft without notes for the scope
-
     added = await container.note_service.add("claim", "A claim", 1, "T")
     assert (await next_step())["phase"] == "synthesis"  # per-paper notes, nothing synthesised
+
     await container.synthesis.add_synthesis("T", "consensus", "Agreed.", [added["id"]])
-
     r = await next_step()
-    assert r["phase"] == "writing" and r["payload"]["action"] == "draft"
-    assert "no notes" not in r["why"]
-
-    await container.section_service.update(sid, None, None, "Draft [1].", "drafting", None, None)
-    assert (await next_step())["payload"]["action"] == "critique"
-
-    await container.section_service.record_critique(sid, [{"severity": "blocker"}])
-    assert (await next_step())["payload"]["action"] == "revise"
-
-    await container.section_service.record_critique(sid, [{"severity": "blocker"}])
-    assert (await next_step())["payload"]["action"] == "finish"
-
-    await container.section_service.update(sid, None, None, None, "done", None, None)
-    assert (await next_step())["phase"] == "build"
+    assert r["phase"] == "done"
+    assert [c["topic"] for c in r["payload"]["clusters"]] == ["T"]
+    assert r["payload"]["criteria"] == "c"
+    assert "gaps" in r["payload"]
 
 
 async def test_last_actions_reflect_review_history(tmp_project: Path):

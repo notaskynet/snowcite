@@ -10,21 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **`next_step()`** — one entry point that derives the phase from the database (`not_started`, `criteria`, `search`, `review`, `low_confidence`, `synthesis`, `outline`, `writing`, `build`, `done`) and returns the ordered actions plus the data for that phase (criteria and the next compact batch while reviewing, the current section and its next action while writing). Gates are enforced in code: the next review batch is withheld until the rolling summary is saved, unconfirmed `auto_low` decisions block the outline, and a section without notes for its scope can't be drafted.
+- `get_prisma_counts` — PRISMA numbers from the review trail.
 - `ProjectService`/`ClaudeFiles` own project init and the generated Claude Code files.
 
 ### Changed
 
-- **Layered package layout.** `domain/` (pure models, types, rules), `storage/` (`Database`, schema, repositories), `services/` (Review, Note, Section, Synthesis, Search, Citation, Artifact, Build), `render/` (`DocumentBackend` with `TypstBackend`/`LatexBackend`, `Compiler`, bibliography, templates), `sources/` (`SourceClient` + one class per source), wired in `container.py`. MCP tools are thin wrappers over services; workflow invariants live in `domain/rules.py`.
-- `write_document` takes `title`/`author` first and builds from stored section drafts when `sections` is omitted.
+- **Layered package layout.** `domain/` (pure models, types, rules), `storage/` (`Database`, schema, repositories), `services/` (Review, Note, Section, Synthesis, Search, Citation, Artifact, Project, Workflow), `sources/` (`SourceClient` + one class per source), wired in `container.py`. MCP tools are thin wrappers over services; workflow invariants live in `domain/rules.py`.
 - `get_session_state` is replaced by `next_step`; phases derive from the database and the old `outline_*` / `skeleton_approved` / `polishing` phases are gone.
 
 ### Fixed
 
-- v0.3 section drafts now reach the document: `write_document`, `estimate_pages`, `get_review_progress`, `gap_check`, `rewrite_citations`, `set_backend`, and the session state all read `sections.draft` (previously the v0.2 `section_content` table).
+- v0.3 section drafts now reach the document: `get_review_progress`, `gap_check`, `rewrite_citations` and the workflow state read `sections.draft` (previously the v0.2 `section_content` table).
 - The v0.2 `get_section`/`list_sections` tools shadowed the v0.3 ones; they are gone.
 
 ### Removed
 
+- **Document building and PDF.** snowcite no longer renders or compiles anything: `write_document`, `compile_pdf`, `estimate_pages`, `set_backend`, `export_docx`, the PRISMA/overview/code/appendix snippet tools, the Typst and LaTeX backends and templates, Hayagriva output, and the `backend` project field. Writing the document is the model's job (skills); `export_bibtex`/`export_ris` stay. `generate_prisma_flow` became `get_prisma_counts` (numbers only).
+- `next_step` ends at synthesis (`done` = corpus ready, hand over to writing skills); the `outline`, `writing` and `build` phases are gone.
 - The v0.2 writing pipeline: `save_outline`, `get_outline`, `approve_outline`, `save_skeleton`, `get_skeleton`, `approve_skeleton`, `check_section_drift`, `save_section`, `get_section_content`, `list_section_contents`, `polish_section`, `polish_document`, `regenerate_section_brief`, `prepare_section_for_review`. Use sections + the critique loop.
 - Per-section `artifact_ids` assignment (it lived in the outline). `get_section_critique_inputs` now returns every included artifact as a brief (id, citation label, summary — no content); fetch bodies with `get_artifact`.
 

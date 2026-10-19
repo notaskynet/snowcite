@@ -16,7 +16,6 @@ type Direction = Literal["references", "citations"]
 # the user should sanity-check; `user` = user decided.
 type ReviewedBy = Literal["auto_high", "auto_low", "user"]
 type Confidence = Literal["high", "low"]
-type Backend = Literal["latex", "typst"]
 type Severity = Literal["ok", "warn", "error"]
 type Phase = Literal[
     "not_started",
@@ -25,9 +24,6 @@ type Phase = Literal[
     "review",
     "low_confidence",
     "synthesis",
-    "outline",
-    "writing",
-    "build",
     "done",
 ]
 type ArtifactType = Literal["interview", "code", "document", "note", "dataset"]
