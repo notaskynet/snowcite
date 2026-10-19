@@ -46,7 +46,7 @@ def decide(s: WorkflowState) -> Step:  # noqa: PLR0911 — one return per phase
             "No inclusion/exclusion criteria yet.",
             [
                 "Agree inclusion, exclusion and review categories with the user",
-                "set_review_criteria(criteria_text)",
+                "review_criteria(criteria_text)",
             ],
         )
     if s.papers_total == 0:
@@ -64,7 +64,7 @@ def decide(s: WorkflowState) -> Step:  # noqa: PLR0911 — one return per phase
                 [
                     "Rewrite the summary (<= 500 words) from the current approved/maybe papers, "
                     "using the categories from the criteria",
-                    "save_review_summary(summary, clusters)",
+                    "review_summary(summary, clusters)",
                 ],
                 needs_summary=True,
             )
@@ -75,7 +75,7 @@ def decide(s: WorkflowState) -> Step:  # noqa: PLR0911 — one return per phase
                 "Re-read the criteria in the payload (drift guard)",
                 "Decide each paper in `batch`: confident -> auto_high, leaning -> auto_low, "
                 "borderline -> ask the user one at a time without recommending",
-                "set_review_status(..., notes=[...]) — approved/maybe papers need at least one "
+                "review_batch(decisions) in one call — approved/maybe papers need at least one "
                 "claim or finding note; rejected get none",
                 "Call next_step() again after the batch",
             ],
@@ -92,7 +92,7 @@ def decide(s: WorkflowState) -> Step:  # noqa: PLR0911 — one return per phase
             f"{s.auto_low} auto_low decision(s) await the user's confirmation.",
             [
                 "Walk the papers one at a time with the user (facts only, no recommendation)",
-                "set_review_status([id], status, reason='manual: ...', reviewed_by='user')",
+                "review_batch([{paper_id, status, reason: 'manual: ...', reviewed_by: 'user'}])",
             ],
         )
     if s.per_paper_notes > 0 and s.cross_paper_notes == 0:
@@ -111,6 +111,6 @@ def decide(s: WorkflowState) -> Step:  # noqa: PLR0911 — one return per phase
         "The corpus is reviewed and synthesised; the literature work is complete.",
         [
             "Hand over to the writing skills: the notes graph, clusters and papers are the source",
-            "get_papers_for_writing(cluster=...) / get_cluster_notes(cluster) for the material",
+            "papers(status='approved', cluster=..., include_abstracts=True) / get_cluster_notes(cluster) for the material",
         ],
     )

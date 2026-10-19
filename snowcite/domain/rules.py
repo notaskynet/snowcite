@@ -7,7 +7,12 @@ is enforced, not just documented.
 
 from typing import Any
 
-from snowcite.domain.types import CROSS_PAPER_NOTE_TYPES, PER_PAPER_NOTE_TYPES
+from snowcite.domain.types import (
+    CROSS_PAPER_NOTE_TYPES,
+    PER_PAPER_NOTE_TYPES,
+    REVIEWED_BY,
+    STATUSES,
+)
 
 
 def validate_note_scope(note_type: str, paper_id: int | None) -> str | None:
@@ -34,6 +39,33 @@ def validate_inline_notes(notes: list[dict[str, Any]], paper_count: int) -> str 
         if not isinstance(ntext, str) or not ntext.strip():
             return f"notes[{idx}].text is empty"
     return None
+
+
+# Approving or "maybe"-ing a paper must leave something in the knowledge graph.
+_EXTRACTION_NOTE_TYPES = frozenset({"claim", "finding"})
+
+
+def validate_decision(decision: dict[str, Any], paper_ids: list[int]) -> str | None:
+    """Shape of one `review_batch` decision (paper ids already extracted by the caller)."""
+    if not paper_ids or not all(isinstance(i, int) for i in paper_ids):
+        return "paper_id / paper_ids must be a non-empty list of integers"
+    if decision.get("status") not in STATUSES:
+        return f"status must be one of {list(STATUSES)}; got {decision.get('status')!r}"
+    reason = decision.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return "reason is required (PRISMA trail)"
+    if decision.get("reviewed_by", "auto_high") not in REVIEWED_BY:
+        return f"reviewed_by must be one of {list(REVIEWED_BY)}"
+    return None
+
+
+def requires_extraction(status: str) -> bool:
+    return status in ("approved", "maybe")
+
+
+def validate_extraction(notes: list[dict[str, Any]] | None) -> bool:
+    """True when `notes` holds at least one claim or finding."""
+    return any(n.get("type") in _EXTRACTION_NOTE_TYPES for n in notes or [])
 
 
 def progress_warnings(

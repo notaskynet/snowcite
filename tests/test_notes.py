@@ -6,16 +6,8 @@ import pytest
 
 from snowcite.container import container
 from snowcite.domain.models import Paper
-from snowcite.tools.notes import (
-    add_note,
-    add_notes,
-    delete_note,
-    get_note_density,
-    get_notes,
-    link_notes,
-    update_note,
-)
-from snowcite.tools.review import set_review_status
+from snowcite.tools.notes import add_notes, get_notes, link_notes, update_note
+from tests.helpers import add_note, delete_note, get_note_density, set_review_status
 
 
 async def _seed_paper() -> int:

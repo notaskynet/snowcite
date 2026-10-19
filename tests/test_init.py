@@ -8,11 +8,7 @@ import pytest
 
 from snowcite.container import container
 from snowcite.storage.projects import create_project_dir, get_db_path
-from snowcite.tools.init import (
-    apply_settings_diff,
-    get_project_metadata,
-    init_project,
-)
+from snowcite.tools.init import apply_settings_diff, get_project_metadata, init_project
 
 
 @pytest.fixture

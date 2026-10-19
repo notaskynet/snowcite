@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Tool surface: 68 → 38.** Related tools merged into entity-oriented ones; behaviour is unchanged unless noted.
+  - Review: `review_batch(decisions)` replaces `set_review_status` — one call per batch, valid decisions applied and invalid ones reported by index. **Approved/maybe papers must leave a claim or finding in the knowledge graph** (inline `notes`, or notes recorded earlier); the server rejects the decision otherwise. `review_criteria`, `review_summary` read when called bare and write when given arguments.
+  - Reading papers: `papers(status, cluster, reviewed_by, include_abstracts, ...)` replaces `get_saved_papers`, `get_unreviewed_papers`, `get_low_confidence_reviews`, `get_papers_for_writing`; `paper(id)` replaces `get_paper_details`. Records are compact (no abstract/bibtex) unless asked.
+  - `snowball(paper_ids, direction)` replaces `expand_citations` (batch, per-paper errors); `import_refs` replaces `import_bibtex`/`import_ris`; `export_bibliography(format)` replaces `export_bibtex`/`export_ris`.
+  - Notes: `add_notes`, `get_notes`, `update_note(..., delete=True)`, `link_notes`. Sections: `create_sections`, `get_sections`, `update_section(..., delete=True)`, `section_papers(link=, unlink=)`, `thesis`. Artifacts: `add_artifact`, `get_artifacts`, `update_artifact`.
+  - Gone without replacement: `save_papers`, `get_review_progress` (use `next_step`), `get_note_density`, `get_outline_inputs` (carried by `next_step` in phase `done`), `add_note`/`delete_note`/`create_section`/`delete_section`/`link_paper_to_section`/`unlink_paper_from_section`/`get_section_papers` (folded into the tools above).
 - **Layered package layout.** `domain/` (pure models, types, rules), `storage/` (`Database`, schema, repositories), `services/` (Review, Note, Section, Synthesis, Search, Citation, Artifact, Project, Workflow), `sources/` (`SourceClient` + one class per source), wired in `container.py`. MCP tools are thin wrappers over services; workflow invariants live in `domain/rules.py`.
 - `get_session_state` is replaced by `next_step`; phases derive from the database and the old `outline_*` / `skeleton_approved` / `polishing` phases are gone.
 

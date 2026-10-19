@@ -4,7 +4,13 @@ from typing import Any
 
 from snowcite.domain import rules
 from snowcite.domain.citations import count_cites
-from snowcite.storage.repositories import ProjectRepository, ReviewRepository, SectionRepository
+from snowcite.storage.repositories import (
+    NoteRepository,
+    PaperRepository,
+    ProjectRepository,
+    ReviewRepository,
+    SectionRepository,
+)
 
 
 class ReviewService:
@@ -13,7 +19,11 @@ class ReviewService:
         reviews: ReviewRepository,
         sections: SectionRepository,
         project: ProjectRepository,
+        papers: PaperRepository,
+        notes: NoteRepository,
     ) -> None:
+        self._papers = papers
+        self._notes = notes
         self._reviews = reviews
         self._sections = sections
         self._project = project
@@ -26,18 +36,42 @@ class ReviewService:
     async def get_criteria(self) -> dict[str, Any] | None:
         return await self._reviews.latest_criteria()
 
-    async def unreviewed(
+    async def list_papers(
         self,
-        limit: int,
+        status: str | None,
         source: str | None,
         year_from: int | None,
         year_to: int | None,
+        search: str | None,
+        cluster: str | None,
+        reviewed_by: str | None,
         include_abstracts: bool,
+        limit: int,
+        offset: int,
     ) -> list[dict[str, Any]]:
-        return await self._reviews.unreviewed(limit, source, year_from, year_to, include_abstracts)
+        """Saved papers with review state; `cluster` narrows to a summary cluster's papers."""
+        within: list[int] | None = None
+        if cluster:
+            resolved = await self._reviews.resolve_cluster_paper_ids(cluster)
+            if isinstance(resolved, dict):
+                return [resolved]
+            within = resolved
+        return await self._papers.find(
+            status,
+            source,
+            year_from,
+            year_to,
+            search,
+            reviewed_by,
+            within,
+            include_abstracts,
+            limit,
+            offset,
+        )
 
-    async def low_confidence(self, status: str | None, limit: int) -> list[dict[str, Any]]:
-        return await self._reviews.low_confidence(status, limit)
+    async def paper_details(self, paper_id: int) -> dict[str, Any]:
+        paper = await self._papers.details(paper_id)
+        return paper if paper is not None else {"error": f"paper {paper_id} not found"}
 
     # ─── Decisions ──────────────────────────────────────────────────────
 
@@ -46,9 +80,9 @@ class ReviewService:
         paper_ids: list[int],
         status: str,
         reason: str,
-        note: str | None,
-        reviewed_by: str,
-        notes: list[dict[str, Any]] | None,
+        note: str | None = None,
+        reviewed_by: str = "auto_high",
+        notes: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         if notes:
             error = rules.validate_inline_notes(notes, len(paper_ids))
@@ -62,6 +96,63 @@ class ReviewService:
         if result["note_ids"]:
             out["note_ids"] = result["note_ids"]
         return out
+
+    async def review_batch(self, decisions: list[dict[str, Any]]) -> dict[str, Any]:
+        """Apply a batch of decisions; valid ones go through, invalid ones are reported by index.
+
+        A decision is `{paper_id | paper_ids, status, reason, reviewed_by?, note?, notes?}`.
+        Approving or "maybe"-ing a paper must leave something in the knowledge graph:
+        either `notes` containing a claim/finding (single paper only) or per-paper
+        notes recorded earlier. Rejected papers take no notes.
+        """
+        updated = 0
+        errors: list[dict[str, Any]] = []
+        skipped: list[int] = []
+        note_ids: list[int] = []
+        for idx, decision in enumerate(decisions):
+            ids = decision.get("paper_ids") or (
+                [decision["paper_id"]] if "paper_id" in decision else []
+            )
+            error = rules.validate_decision(decision, ids)
+            if error is None and rules.requires_extraction(decision["status"]):
+                error = await self._extraction_error(decision, ids)
+            if error:
+                errors.append({"index": idx, "error": error})
+                continue
+            result = await self.set_status(
+                ids,
+                decision["status"],
+                decision["reason"],
+                decision.get("note"),
+                decision.get("reviewed_by", "auto_high"),
+                decision.get("notes"),
+            )
+            if "error" in result:
+                errors.append({"index": idx, "error": result["error"]})
+                continue
+            updated += result["updated"]
+            skipped += result.get("skipped_invalid_ids", [])
+            note_ids += result.get("note_ids", [])
+        out: dict[str, Any] = {"updated": updated, "errors": errors}
+        if skipped:
+            out["skipped_invalid_ids"] = skipped
+        if note_ids:
+            out["note_ids"] = note_ids
+        return out
+
+    async def _extraction_error(self, decision: dict[str, Any], ids: list[int]) -> str | None:
+        notes = decision.get("notes")
+        if notes:
+            if not rules.validate_extraction(notes):
+                return "approved/maybe notes need at least one claim or finding"
+            return None
+        missing = sorted(set(ids) - await self._notes.paper_ids_with_notes(ids))
+        if missing:
+            return (
+                f"papers {missing} have no notes: pass notes=[{{type: claim|finding, text}}] "
+                "(one paper per decision) so the knowledge graph isn't left empty"
+            )
+        return None
 
     async def bulk_reclassify(
         self,
@@ -130,14 +221,3 @@ class ReviewService:
             data["stale"], data["counts_snapshot"], data["counts_live"]
         )
         return data
-
-    async def papers_for_writing(
-        self, cluster: str | None, limit: int, offset: int
-    ) -> list[dict[str, Any]]:
-        paper_ids: list[int] | None = None
-        if cluster:
-            resolved = await self._reviews.resolve_cluster_paper_ids(cluster)
-            if isinstance(resolved, dict):
-                return [resolved]
-            paper_ids = resolved
-        return await self._reviews.approved_for_writing(paper_ids, limit, offset)

@@ -75,11 +75,11 @@ discipline, standard, optionally supervisor/institution/deadline) via
 
 For longer/focused reviews, the recommended flow is:
 
-1. `save_thesis(text)` — 2–5 paragraphs: "what is this paper about, what's
+1. `thesis(text)` — 2–5 paragraphs: "what is this paper about, what's
    the contribution". Written before search so the outline and downstream
    search stay anchored to an explicit intent.
 2. Only then: outline → search → review. Re-read the thesis with
-   `get_thesis()` before every batch — the criteria drift guard applies to
+   `thesis()` before every batch — the criteria drift guard applies to
    the thesis too.
 3. After sections are drafted, run `gap_check()` to find substantive
    sentences without citations; decide whether to cite more or trim.
@@ -89,14 +89,14 @@ thesis step is additive, not required.
 
 ## Review workflow (primary loop)
 
-1. **Before every batch** — call `get_review_criteria()`. Drift guard.
-2. **Read the summary** — `get_review_summary()`. If stale or counts diverge, flag
+1. **Before every batch** — call `review_criteria()`. Drift guard.
+2. **Read the summary** — `review_summary()`. If stale or counts diverge, flag
    it to the user. Skip if no summary yet (first batch).
-3. `get_unreviewed_papers(limit=20)` — work in batches of 10–20.
+3. `papers(status="unreviewed", limit=20)` — work in batches of 10–20.
 4. For each paper decide **autonomously** + pick a confidence grade:
-   - **Confident match** → `set_review_status([ids], "approved", reason="auto: matches criterion X", reviewed_by="auto_high", notes=[{type, text, cluster}, ...])`. For approved/maybe pass at least one `claim` or `finding` note in the same call — the knowledge graph feeds synthesis and writing.
-   - **Confident reject** → `set_review_status([ids], "rejected", reason="auto: off-topic — Y", reviewed_by="auto_high")`. No notes for rejects.
-   - **Leaning but not sure** → decide anyway, `reviewed_by="auto_low"`. User will later sanity-check via `get_low_confidence_reviews()`.
+   - **Confident match** → `review_batch([{paper_id, status: "approved", reason: "auto: matches criterion X", reviewed_by: "auto_high", notes: [{type, text, cluster}]}])`. Approved/maybe papers need at least one `claim` or `finding` note — the server rejects the decision otherwise.
+   - **Confident reject** → `review_batch([{paper_ids: [...], status: "rejected", reason: "auto: off-topic — Y", reviewed_by: "auto_high"}])`. No notes for rejects.
+   - **Leaning but not sure** → decide anyway, `reviewed_by="auto_low"`. User will later sanity-check via `papers(reviewed_by="auto_low")`.
    - **Genuinely borderline** → defer to the user.
 5. Borderline cases go to the user **one at a time**, in {{ language }}:
 
@@ -108,15 +108,15 @@ thesis step is additive, not required.
    ```
 
    **Do not recommend a decision** — it creates bias.
-6. User answers → `set_review_status([id], status, reason="manual: <user comment>", reviewed_by="user")`.
-7. **After each batch** → `save_review_summary(summary, clusters)`.
-8. `get_review_progress()` periodically for the user. It also reports writing
+6. User answers → `review_batch([{paper_id, status, reason: "manual: <user comment>", reviewed_by: "user"}])`.
+7. **After each batch** → `review_summary(summary, clusters)`.
+8. `next_step()` periodically for the user. It also reports writing
    stats (words, citations per 100 words) and warns when approved sources or
    citation density drop below the project's target metrics.
 
 ### Mandatory low-confidence second pass
 
-Before creating the section outline, call `get_low_confidence_reviews()` and walk the
+Before creating the section outline, call `papers(reviewed_by="auto_low")` and walk the
 user through every `auto_low` decision one at a time. These are papers you
 weren't sure about — the user is the tiebreaker. **Do not skip this step**;
 it is the only safeguard against `auto_low` drift silently shaping the
@@ -125,8 +125,8 @@ otherwise.
 
 ### Abstract hygiene
 
-- `get_unreviewed_papers()` returns compact records **without abstracts** by default.
-- For borderline papers, pull full abstract via `get_paper_details(paper_id)`.
+- `papers(status="unreviewed")` returns compact records **without abstracts** by default.
+- For borderline papers, pull full abstract via `paper(paper_id)`.
 - Summarize in 1–2 neutral sentences in your message to the user — do not paste raw.
 
 ## Synthesis pass
@@ -141,7 +141,7 @@ After the corpus is reviewed, name patterns *across* papers — gaps, contradict
 
 Writing is section-by-section, not document-at-a-time. Each section is an entity with scope, draft, status, severity counters.
 
-1. **Outline.** `get_outline_inputs()` → propose section structure (title + scope = clusters/keywords/questions) → user approves → `bulk_create_sections([...])`.
+1. **Outline.** `next_step()` → propose section structure (title + scope = clusters/keywords/questions) → user approves → `create_sections([...])`.
 2. **Per section:**
    1. (Optional) `research_section(section_id)` to bring in more papers for that scope. Snowball is **not** automatic.
    2. `get_section_critique_inputs(section_id)` — draft + relevant notes (filtered by `scope.clusters`) + linked papers. If notes are sparse, do another synthesis pass on those clusters first.
@@ -155,8 +155,8 @@ Writing is section-by-section, not document-at-a-time. Each section is an entity
 
 After the first review pass:
 
-1. `get_saved_papers(status="approved")`
-2. `expand_citations(id, "references")` or `"citations"`
+1. `papers(status="approved")`
+2. `snowball(ids, "references")` or `"citations"`
 3. New papers auto-save to `unreviewed`. Summary marked `stale=TRUE`.
 4. Regenerate summary → repeat review on new batch.
 
@@ -172,10 +172,10 @@ Write in {{ language }} natively, don't translate word-for-word:
 
 ## Writing from the corpus
 
-snowcite stores no document source. Pull material with `get_papers_for_writing(cluster=...)`,
+snowcite stores no document source. Pull material with `papers(status="approved", cluster=..., include_abstracts=True)`,
 `get_cluster_notes(cluster)` and section tools; write the text yourself in the project's
 formatting standard ({{ standard }}) and cite approved papers as `[N]` (their snowcite id).
-`export_bibtex()` writes `references.bib` for the approved set.
+`export_bibliography()` writes `references.bib` for the approved set.
 
 ## Research artifacts (interviews, code, notes, …)
 
@@ -184,13 +184,13 @@ formatting standard ({{ standard }}) and cite approved papers as `[N]` (their sn
 notes, archival documents, dataset descriptions — and weave them into the
 writing the same way abstracts get woven in.
 
-**To ingest an artifact:** `import_artifact(path, type, label, summary, metadata)`
-reads a text file, or `add_artifact_inline(type, label, content, ...)` takes
+**To ingest an artifact:** `add_artifact(type, label, path=..., summary, metadata)`
+reads a text file, or `add_artifact(type, label, content=...)` takes
 a string directly. Supported types: `interview`, `code`, `document`, `note`,
 `dataset`.
 
-**To use artifacts in a section:** list them with `list_artifacts(included_only=True)`
-and pull full content with `get_artifact(id)` when quoting. Sections no longer
+**To use artifacts in a section:** list them with `get_artifacts(included_only=True)`
+and pull full content with `get_artifacts(id)` when quoting. Sections no longer
 carry per-section artifact assignments.
 
 **Inline citation format:** `[I:3]` for interview id 3, `[C:auth.py]` for
@@ -263,12 +263,12 @@ If you fail to resolve the same problem (search failure, parsing issue, etc.) **
 - **Sources in DB**: `arxiv | semantic_scholar | openalex | crossref | pubmed`.
 - **Review statuses**: `approved | maybe | rejected | unreviewed`.
 - **`reviewed_by`**: `auto_high` (direct match) / `auto_low` (extrapolation — user sanity-checks later) / `user`.
-- **`reason` is required** in `set_review_status` — PRISMA audit trail.
+- **`reason` is required** in `review_batch` — PRISMA audit trail.
 - **All I/O is async** — aiosqlite, httpx.AsyncClient.
 
 ## Source details
 
-- **arXiv**: 1 req / 3 s. No citation graph — `expand_citations` falls back to Semantic Scholar via DOI.
+- **arXiv**: 1 req / 3 s. No citation graph — `snowball` falls back to Semantic Scholar via DOI.
 - **Semantic Scholar**: 100 req / 5 min unauthenticated, 100 req / s with `SNOWCITE_SEMANTIC_SCHOLAR_API_KEY`. Retries + backoff via `sources/_http.py`.
 - **OpenAlex**: polite pool via `SNOWCITE_OPENALEX_EMAIL`. Abstracts arrive as inverted index.
 

@@ -87,7 +87,11 @@ class WorkflowService:
             case "review":
                 payload = await self._review_payload(step)
             case "low_confidence":
-                payload = {"papers": await self._review.low_confidence(None, _BATCH_SIZE)}
+                payload = {
+                    "papers": await self._review.list_papers(
+                        None, None, None, None, None, None, "auto_low", False, _BATCH_SIZE, 0
+                    )
+                }
             case "synthesis":
                 payload = {"note_density": await self._notes.density()}
             case "done":
@@ -114,7 +118,9 @@ class WorkflowService:
             ),
         }
         if not step.needs_summary:
-            payload["batch"] = await self._review.unreviewed(_BATCH_SIZE, None, None, None, False)
+            payload["batch"] = await self._review.list_papers(
+                "unreviewed", None, None, None, None, None, None, False, _BATCH_SIZE, 0
+            )
         return payload
 
 

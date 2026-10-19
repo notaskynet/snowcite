@@ -6,15 +6,9 @@ import pytest
 
 from snowcite.container import container
 from snowcite.domain.models import Paper
-from snowcite.tools.review import set_review_status
-from snowcite.tools.sections import get_section
-from snowcite.tools.writing import (
-    gap_check,
-    get_prisma_counts,
-    get_thesis,
-    rewrite_citations,
-    save_thesis,
-)
+from snowcite.tools.review import get_prisma_counts
+from snowcite.tools.writing import gap_check, rewrite_citations
+from tests.helpers import get_section, get_thesis, save_thesis, set_review_status
 
 
 async def _draft(title: str, text: str) -> int:

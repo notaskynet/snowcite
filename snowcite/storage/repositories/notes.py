@@ -227,3 +227,15 @@ class NoteRepository:
             )
             per, cross = await cur.fetchone()
         return per, cross
+
+    async def paper_ids_with_notes(self, paper_ids: list[int]) -> set[int]:
+        """The subset of `paper_ids` that already has at least one per-paper note."""
+        if not paper_ids:
+            return set()
+        placeholders = ",".join("?" * len(paper_ids))
+        async with self._db.connection() as conn:
+            cur = await conn.execute(
+                f"SELECT DISTINCT paper_id FROM notes WHERE paper_id IN ({placeholders})",  # noqa: S608
+                paper_ids,
+            )
+            return {r[0] for r in await cur.fetchall()}

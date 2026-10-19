@@ -145,15 +145,22 @@ class PaperRepository:
 
     async def find(
         self,
-        status: str | None,
-        source: str | None,
-        year_from: int | None,
-        year_to: int | None,
-        search: str | None,
-        limit: int,
-        offset: int,
+        status: str | None = None,
+        source: str | None = None,
+        year_from: int | None = None,
+        year_to: int | None = None,
+        search: str | None = None,
+        reviewed_by: str | None = None,
+        within_ids: list[int] | None = None,
+        include_abstracts: bool = False,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Saved papers joined with review status, AND-filtered."""
+        """Saved papers joined with review state, AND-filtered, in id order.
+
+        Compact by default (no abstract / bibtex / metadata) so batches stay cheap
+        in the model's context; `include_abstracts` adds the abstract.
+        """
         query = """
             SELECT p.*, r.status AS review_status, r.reason AS review_reason,
                    r.note AS review_note, r.reviewed_by, r.reviewed_at
@@ -165,6 +172,9 @@ class PaperRepository:
         if status is not None:
             query += " AND r.status = ?"
             params.append(status)
+        if reviewed_by is not None:
+            query += " AND r.reviewed_by = ?"
+            params.append(reviewed_by)
         if source is not None:
             query += " AND p.source = ?"
             params.append(source)
@@ -177,11 +187,21 @@ class PaperRepository:
         if search:
             query += " AND (p.title LIKE ? OR p.abstract LIKE ?)"
             params.extend([f"%{search}%"] * 2)
+        if within_ids is not None:
+            query += f" AND p.id IN ({','.join('?' * len(within_ids))})"
+            params.extend(within_ids)
         query += " ORDER BY p.id LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         async with self._db.connection() as conn:
             cur = await conn.execute(query, params)
-            return [paper_row_to_dict(r) for r in await cur.fetchall()]
+            papers = [paper_row_to_dict(r) for r in await cur.fetchall()]
+        for p in papers:
+            p.pop("bibtex", None)
+            p.pop("metadata", None)
+            p.pop("title_normalized", None)
+            if not include_abstracts:
+                p.pop("abstract", None)
+        return papers
 
     async def details(self, paper_id: int) -> dict[str, Any] | None:
         """Full record with review status and stored citation-edge counts."""

@@ -39,7 +39,9 @@ class Container:
         self.project = ProjectRepository(self.db)
         self.artifacts = ArtifactRepository(self.db)
 
-        self.review_service = ReviewService(self.reviews, self.sections, self.project)
+        self.review_service = ReviewService(
+            self.reviews, self.sections, self.project, self.papers, self.notes
+        )
         self.note_service = NoteService(self.notes)
         semantic_scholar = SemanticScholarSource()
         self.search = SearchService(

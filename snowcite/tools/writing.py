@@ -1,4 +1,4 @@
-"""Writing helpers: thesis, citation checks, and PRISMA counts.
+"""Writing helpers: thesis and citation checks.
 
 Structure and drafts live in sections (`tools/sections.py`, `tools/critique.py`);
 this module holds the pieces around them.
@@ -15,29 +15,25 @@ from snowcite.domain.citations import GAP_CHECK_MIN_WORDS
 
 
 @mcp.tool()
-async def save_thesis(content: str) -> dict[str, Any]:
-    """Persist the paper's thesis — 2–5 paragraphs answering "what is this
-    about, what's the contribution". Singleton; re-saving overwrites.
+async def thesis(content: str | None = None) -> dict[str, Any] | None:
+    """Read or set the paper's thesis — 2–5 paragraphs: what it is about, what it contributes.
 
-    Written early in the thesis-first workflow (before the outline) so later
-    stages — outline, search, review — can key off an explicit statement of
-    intent instead of drifting toward whatever papers happened to turn up
-    first. Let the thesis change as understanding deepens; just re-save.
+    Without `content` returns `{content, word_count, updated_at}` (None if never set).
+    With `content` overwrites the singleton and returns `{saved, word_count}`.
+
+    Written early in the thesis-first workflow so search, review and the outline can key
+    off an explicit statement of intent. Let it change as understanding deepens.
     """
+    if content is None:
+        record = await container.project.thesis_record()
+        if record is None:
+            return None
+        return {**record, "word_count": len(record["content"].split())}
     text = content.strip()
     if not text:
         return {"error": "thesis content is empty"}
     await container.project.save_thesis(text)
     return {"saved": True, "word_count": len(text.split())}
-
-
-@mcp.tool()
-async def get_thesis() -> dict[str, Any] | None:
-    """Read the stored thesis. Returns None if never set."""
-    record = await container.project.thesis_record()
-    if record is None:
-        return None
-    return {**record, "word_count": len(record["content"].split())}
 
 
 # ─── Citation checks ────────────────────────────────────────────────────────
@@ -80,17 +76,3 @@ async def rewrite_citations(
     `.tex` / `.typ` through sed. See CLAUDE.md "Stuck detection".
     """
     return await container.citations.rewrite(mapping, sections)
-
-
-# ─── PRISMA counts ─────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-async def get_prisma_counts() -> dict[str, Any]:
-    """PRISMA flow numbers from the review trail.
-
-    `identified` (papers ever recorded), `screened` (decided, not unreviewed),
-    `excluded_total` with `excluded_by_reason`, and `included` (approved). The
-    model draws the diagram or writes the prose itself.
-    """
-    return await container.reviews.prisma_counts()

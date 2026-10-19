@@ -1,10 +1,10 @@
-"""Search and persistence tools."""
+"""Search, snowball and read tools for the paper corpus."""
 
 from typing import Any
 
 from snowcite.app import mcp
 from snowcite.container import container
-from snowcite.domain.types import Direction, Source, Status
+from snowcite.domain.types import Direction, ReviewedBy, Source, Status
 
 
 @mcp.tool()
@@ -17,12 +17,13 @@ async def search_papers(
     auto_save: bool = True,
     abstract_max_chars: int = 0,
 ) -> dict[str, Any]:
-    """Search arXiv / Semantic Scholar / OpenAlex in parallel, dedup by DOI/title.
+    """Search arXiv / Semantic Scholar / OpenAlex / Crossref / PubMed in parallel, dedup by DOI/title.
 
     By default (auto_save=True) persists new papers to the DB and returns a compact
     summary {saved, duplicates, new_ids, titles} — abstracts never enter the chat
     context, which keeps review sessions lean and avoids false-positive safety triggers
-    when harmful-sounding abstracts accumulate.
+    when harmful-sounding abstracts accumulate. Sources default to a set chosen from
+    the project's discipline.
 
     Set auto_save=False for preview mode; then the response includes the full paper list
     (with abstracts trimmed to abstract_max_chars; 0 drops the field entirely).
@@ -35,55 +36,69 @@ async def search_papers(
 
 
 @mcp.tool()
-async def save_papers(papers: list[dict[str, Any]]) -> dict[str, Any]:
-    """Insert papers with DOI uniqueness + fuzzy-title fallback dedup.
-
-    Returns {saved, duplicates, new_ids, new_titles}. Prefer
-    `search_papers(auto_save=True)`; this tool exists for manual re-insertion
-    or imported data.
-    """
-    return await container.search.save_papers(papers)
-
-
-@mcp.tool()
-async def get_saved_papers(
-    status: Status | None = None,
-    source: Source | None = None,
-    year_from: int | None = None,
-    year_to: int | None = None,
-    search: str | None = None,
-    limit: int = 100,
-    offset: int = 0,
-) -> list[dict[str, Any]]:
-    """Fetch saved papers with optional filters. Joins review status."""
-    return await container.search.find_saved(
-        status, source, year_from, year_to, search, limit, offset
-    )
-
-
-@mcp.tool()
-async def get_paper_details(paper_id: int) -> dict[str, Any]:
-    """Full paper record by id, including review status and citation counts."""
-    return await container.search.details(paper_id)
-
-
-@mcp.tool()
-async def expand_citations(
-    paper_id: int,
+async def snowball(
+    paper_ids: list[int],
     direction: Direction,
     limit: int = 20,
     auto_save: bool = True,
     abstract_max_chars: int = 0,
 ) -> dict[str, Any]:
-    """Fetch references or citations for one paper; by default persist new ones.
+    """Fetch references or citations for several papers; by default persist the new ones.
 
-    Uses Semantic Scholar API. For arXiv / OpenAlex papers without a Semantic Scholar
-    id, falls back to DOI lookup.
+    Uses the Semantic Scholar graph; arXiv / OpenAlex papers are resolved through their
+    DOI. New papers land in `unreviewed` and mark the review summary stale. Returns
+    `{saved, duplicates, new_ids, titles, errors?}` — `errors` lists papers that
+    couldn't be resolved, by `paper_id`. With auto_save=False returns the merged paper
+    list with abstracts trimmed to abstract_max_chars (0 = omitted).
 
-    With auto_save=True (default), new papers land in `unreviewed` and the response is
-    {saved, duplicates, new_ids, titles}. With auto_save=False, returns full paper list
-    with abstracts trimmed to abstract_max_chars (0 = omitted).
+    Snowball is the user's decision, never part of an automatic loop.
     """
-    return await container.search.expand_citations(
-        paper_id, direction, limit, auto_save, abstract_max_chars
+    return await container.search.snowball(
+        paper_ids, direction, limit, auto_save, abstract_max_chars
     )
+
+
+@mcp.tool()
+async def papers(
+    status: Status | None = None,
+    source: Source | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    search: str | None = None,
+    cluster: str | None = None,
+    reviewed_by: ReviewedBy | None = None,
+    include_abstracts: bool = False,
+    limit: int = 20,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """List saved papers with their review state. All filters are AND-joined.
+
+    Compact records by default — title / year / venue / authors / doi / review fields,
+    no abstract — to keep the context lean. Typical calls:
+    - next review batch: `status="unreviewed"`
+    - second pass over uncertain calls: `reviewed_by="auto_low"`
+    - material for a section: `status="approved", cluster="...", include_abstracts=True`
+    A `cluster` that isn't in the current review summary returns `[{error, available}]`.
+    For one borderline paper use `paper(id)`.
+    """
+    return await container.review_service.list_papers(
+        status,
+        source,
+        year_from,
+        year_to,
+        search,
+        cluster,
+        reviewed_by,
+        include_abstracts,
+        limit,
+        offset,
+    )
+
+
+@mcp.tool()
+async def paper(paper_id: int) -> dict[str, Any]:
+    """Full record for one paper: abstract, review state, stored citation-edge counts.
+
+    Summarise the abstract in one or two neutral sentences for the user; don't paste it.
+    """
+    return await container.review_service.paper_details(paper_id)

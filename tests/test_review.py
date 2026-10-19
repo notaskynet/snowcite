@@ -8,11 +8,7 @@ from snowcite.container import container
 from snowcite.domain.citations import count_cites
 from snowcite.domain.models import Paper
 from snowcite.tools.init import init_project
-from snowcite.tools.review import (
-    get_review_progress,
-    get_unreviewed_papers,
-    set_review_status,
-)
+from tests.helpers import get_review_progress, get_unreviewed_papers, set_review_status
 
 
 def test_count_cites_bracketed_numeric_refs():

@@ -11,9 +11,7 @@ from snowcite.tools.critique import (
     record_section_critique,
     revise_section,
 )
-from snowcite.tools.notes import add_note
-from snowcite.tools.research import link_paper_to_section
-from snowcite.tools.sections import create_section, get_section
+from tests.helpers import add_note, create_section, get_section, link_paper_to_section
 
 
 @pytest.mark.asyncio

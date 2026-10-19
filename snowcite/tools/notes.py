@@ -18,26 +18,14 @@ from snowcite.domain.types import NoteLinkKind, NoteType
 
 
 @mcp.tool()
-async def add_note(
-    type: NoteType,  # noqa: A002 — natural field name across the notes API
-    text: str,
-    paper_id: int | None = None,
-    cluster: str | None = None,
-) -> dict[str, Any]:
-    """Record a single graph note. Returns {id} on success, {error} on validation failure.
-
-    `type` ∈ {claim, finding, method, limitation, gap, contradiction, consensus, open_question}.
-    Per-paper types require `paper_id`; cross-paper types reject it.
-    `cluster` should match a topic from the current `review_summary` clusters
-    (Claude must not invent new ones).
-    Keep `text` short — one or two sentences, paraphrased.
-    """
-    return await container.note_service.add(type, text, paper_id, cluster)
-
-
-@mcp.tool()
 async def add_notes(notes: list[dict[str, Any]]) -> dict[str, Any]:
     """Batch-insert notes. Each item: {type, text, paper_id?, cluster?}.
+
+    `type` ∈ {claim, finding, method, limitation, gap, contradiction, consensus,
+    open_question}. Per-paper types require `paper_id`; cross-paper types reject it
+    (record those with `add_synthesis_note` so they cite their sources). `cluster`
+    must match a topic of the current review summary — never invent one. Keep `text`
+    to one or two paraphrased sentences.
 
     Returns `{inserted: N, ids: [...], errors: [{index, error}]}`. Valid items
     are inserted even if some fail validation; the caller can fix the rejected
@@ -67,21 +55,21 @@ async def update_note(
     text: str | None = None,
     type: NoteType | None = None,  # noqa: A002 — field name consistency across notes API
     cluster: str | None = None,
+    delete: bool = False,
 ) -> dict[str, Any]:
-    """Edit fields on an existing note. Pass only the fields to change.
+    """Edit or delete an existing note. Pass only the fields to change.
+
+    `delete=True` removes the note and any links touching it (idempotent — a missing
+    id is a no-op); the other fields are ignored then.
 
     Type changes are validated against the existing `paper_id` — switching from
     a per-paper type to a cross-paper type (or vice versa) requires also
     nulling/setting paper_id, which this tool will not do; recreate the note
     instead in that case.
     """
+    if delete:
+        return await container.note_service.delete(note_id)
     return await container.note_service.update(note_id, text, type, cluster)
-
-
-@mcp.tool()
-async def delete_note(note_id: int) -> dict[str, Any]:
-    """Remove a note and any links touching it. Idempotent — missing id is a no-op."""
-    return await container.note_service.delete(note_id)
 
 
 @mcp.tool()
@@ -97,14 +85,3 @@ async def link_notes(
     to the per-paper notes that prompted them.
     """
     return await container.note_service.link(from_note_id, to_note_id, kind)
-
-
-@mcp.tool()
-async def get_note_density(cluster: str | None = None) -> dict[str, Any]:
-    """Note counts per cluster × type — used by Phase 2's `find_gaps`.
-
-    Without `cluster` returns the full breakdown; with `cluster` filters to one.
-    Clusters with few per-paper notes or no `gap`/`contradiction` resolution are
-    a hint that synthesis is incomplete.
-    """
-    return await container.note_service.density(cluster)

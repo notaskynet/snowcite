@@ -13,7 +13,7 @@ flowchart TD
     subgraph Phase1["Phase 1 — Onboarding"]
         Init["init_project<br/>discipline, standard, backend, language"]
         Init --> GenFiles["Generate<br/>CLAUDE.md<br/>.claude/settings.json<br/>.claude/agents/*"]
-        GenFiles --> Criteria["set_review_criteria<br/>include / exclude / categories"]
+        GenFiles --> Criteria["review_criteria<br/>include / exclude / categories"]
     end
 
     Criteria --> Search
@@ -24,19 +24,19 @@ flowchart TD
 
         subgraph ReviewLoop["Batch review loop"]
             direction TB
-            GetBatch["get_unreviewed_papers<br/>limit=20, no abstracts"]
+            GetBatch["papers status=unreviewed<br/>limit=20, no abstracts"]
             GetBatch --> AutoClassify{"Claude<br/>classifies"}
-            AutoClassify -->|clear| BulkApprove["set_review_status<br/>bulk auto_high"]
+            AutoClassify -->|clear| BulkApprove["review_batch<br/>auto_high"]
             AutoClassify -->|borderline| AskUser["Show to user<br/>facts only, no recommendation"]
             AskUser --> UserDecide["User: i / e / m"]
-            UserDecide --> SingleStatus["set_review_status<br/>reviewed_by=user"]
-            BulkApprove --> Summary["save_review_summary<br/>≤500 words, rolling"]
+            UserDecide --> SingleStatus["review_batch<br/>reviewed_by=user"]
+            BulkApprove --> Summary["review_summary<br/>≤500 words, rolling"]
             SingleStatus --> Summary
             Summary --> GetBatch
         end
 
         ReviewLoop --> Snowball{"Deeper?"}
-        Snowball -->|yes| Expand["expand_citations<br/>references + citations"]
+        Snowball -->|yes| Expand["snowball<br/>references + citations"]
         Expand --> Search
         Snowball -->|no| Outline
     end
