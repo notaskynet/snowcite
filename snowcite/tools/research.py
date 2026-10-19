@@ -13,7 +13,6 @@ Snowball is expensive — this tool deliberately does not call
 seen what `research_section` brought in.
 """
 
-import json
 from typing import Any
 
 from snowcite.app import mcp
@@ -38,13 +37,11 @@ async def research_section(
     Sections without keywords/questions return early — set scope first via
     `update_section`.
     """
-    async with container.db.connection() as conn:
-        cur = await conn.execute("SELECT scope_json FROM sections WHERE id = ?", (section_id,))
-        row = await cur.fetchone()
-    if row is None:
+    section = await container.section_service.get(section_id)
+    if section is None:
         return {"error": f"section {section_id} not found"}
 
-    scope = json.loads(row["scope_json"])
+    scope = section["scope"]
     queries: list[str] = []
     queries.extend(q for q in scope.get("keywords", []) if q.strip())
     queries.extend(q for q in scope.get("questions", []) if q.strip())
@@ -76,14 +73,9 @@ async def research_section(
             failed_sources.add(f)
 
     if all_new_ids:
-        async with container.db.connection() as conn:
-            for pid, q in _zip_ids_with_queries(per_query):
-                await conn.execute(
-                    "INSERT OR IGNORE INTO paper_section_links "
-                    "(paper_id, section_id, via_query) VALUES (?, ?, ?)",
-                    (pid, section_id, q),
-                )
-            await conn.commit()
+        await container.section_service.link_new_papers(
+            section_id, list(_zip_ids_with_queries(per_query))
+        )
 
     out: dict[str, Any] = {
         "section_id": section_id,
@@ -114,52 +106,17 @@ async def link_paper_to_section(
     `research_section` only links *newly discovered* papers, so existing ones
     need this hook.
     """
-    async with container.db.connection() as conn:
-        # Validate both ends to give a clear error rather than a foreign-key bark.
-        cur = await conn.execute("SELECT 1 FROM papers WHERE id = ?", (paper_id,))
-        if await cur.fetchone() is None:
-            return {"error": f"paper {paper_id} not found"}
-        cur = await conn.execute("SELECT 1 FROM sections WHERE id = ?", (section_id,))
-        if await cur.fetchone() is None:
-            return {"error": f"section {section_id} not found"}
-        await conn.execute(
-            "INSERT OR IGNORE INTO paper_section_links "
-            "(paper_id, section_id, via_query) VALUES (?, ?, ?)",
-            (paper_id, section_id, via_query),
-        )
-        await conn.commit()
-    return {"linked": True}
+    return await container.section_service.link_paper(paper_id, section_id, via_query)
 
 
 @mcp.tool()
 async def unlink_paper_from_section(paper_id: int, section_id: int) -> dict[str, Any]:
     """Remove a paper↔section link without touching the paper itself."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute(
-            "DELETE FROM paper_section_links WHERE paper_id = ? AND section_id = ?",
-            (paper_id, section_id),
-        )
-        await conn.commit()
-    return {"deleted": cur.rowcount}
+    return await container.section_service.unlink_paper(paper_id, section_id)
 
 
 @mcp.tool()
 async def get_section_papers(section_id: int) -> list[dict[str, Any]]:
     """Papers linked to this section, with current review status and the query
     that surfaced them (if any). Newest first."""
-    async with container.db.connection() as conn:
-        cur = await conn.execute(
-            """
-            SELECT p.id, p.title, p.year, p.venue, p.doi,
-                   r.status AS review_status,
-                   l.via_query, l.discovered_at
-            FROM paper_section_links l
-            JOIN papers p ON p.id = l.paper_id
-            LEFT JOIN reviews r ON r.paper_id = p.id
-            WHERE l.section_id = ?
-            ORDER BY l.discovered_at DESC, p.id DESC
-            """,
-            (section_id,),
-        )
-        rows = await cur.fetchall()
-    return [dict(r) for r in rows]
+    return await container.section_service.section_papers(section_id)

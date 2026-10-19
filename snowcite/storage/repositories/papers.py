@@ -136,3 +136,8 @@ class PaperRepository:
             }
             for r in rows
         ]
+
+    async def exists(self, paper_id: int) -> bool:
+        async with self._db.connection() as conn:
+            cur = await conn.execute("SELECT 1 FROM papers WHERE id = ?", (paper_id,))
+            return await cur.fetchone() is not None

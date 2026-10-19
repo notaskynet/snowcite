@@ -165,9 +165,9 @@ snowcite/
 ├── settings.py            # pydantic-settings, env SNOWCITE_*
 ├── container.py           # builds Database, repositories and services (the one wiring point)
 ├── domain/                # pure: models, types (Literals), dedup, citations, rules (invariants)
-├── services/              # ReviewService, NoteService, BuildService: validation + orchestration
+├── services/              # Review, Note, Section, Synthesis, Build services: validation + orchestration
 ├── storage/               # Database, schema + migrations, projects.py (.snowcite/ resolver),
-│   └── repositories/      #   PaperRepository, ReviewRepository, SectionRepository
+│   └── repositories/      #   Paper, Review, Note, Section, Project repositories
 ├── render/                # DocumentBackend (Typst/Latex), Compiler, bibliography, snippets, templates
 ├── logging.py             # shared `log` instance
 ├── sources/               # arxiv / semantic_scholar / openalex / crossref / pubmed + _http

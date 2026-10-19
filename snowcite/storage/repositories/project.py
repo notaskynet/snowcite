@@ -52,3 +52,9 @@ class ProjectRepository:
                 (new_backend,),
             )
             await conn.commit()
+
+    async def thesis(self) -> str | None:
+        async with self._db.connection() as conn:
+            cur = await conn.execute("SELECT content FROM thesis WHERE id = 1")
+            row = await cur.fetchone()
+        return row["content"] if row else None
