@@ -1,24 +1,10 @@
-"""MCP tools for managing research artifacts (interviews, code, notes, etc.).
+"""MCP tools for managing research artifacts (interviews, code, notes, etc.)."""
 
-Thin wrappers over `snowcite.artifacts` — the heavy lifting is in the
-persistence module; these expose the Claude-facing surface.
-"""
-
-from pathlib import Path
 from typing import Any
 
-from snowcite import artifacts
 from snowcite.app import mcp
+from snowcite.container import container
 from snowcite.domain.types import ArtifactType
-
-
-# 200k characters is roughly a 1-hour interview transcript or a small
-# source file. Big enough for most materials, small enough to refuse a
-# runaway import. Callers can pre-trim or split if they hit the ceiling.
-_MAX_ARTIFACT_CHARS = 200_000
-# UTF-8 text is at most 4 bytes per char. Use that as the upper bound to
-# short-circuit before reading a huge file into memory.
-_MAX_ARTIFACT_BYTES = _MAX_ARTIFACT_CHARS * 4
 
 
 @mcp.tool()
@@ -43,50 +29,7 @@ async def import_artifact(
     Only text files are supported. Convert PDFs/docx with `pdftotext` /
     `pandoc` first, then import the resulting text.
     """
-    file = Path(path)
-    if not file.exists():
-        return {"error": f"file not found: {path}"}
-
-    # Cheap size probe before loading the file into memory.
-    size_bytes = file.stat().st_size
-    if size_bytes > _MAX_ARTIFACT_BYTES:
-        return {
-            "error": (
-                f"file is {size_bytes} bytes; limit is ~{_MAX_ARTIFACT_BYTES} bytes "
-                f"({_MAX_ARTIFACT_CHARS} chars). Split the file or trim first."
-            )
-        }
-
-    try:
-        content = file.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return {"error": f"file is not UTF-8 text: {path}. Convert to text first."}
-
-    if len(content) > _MAX_ARTIFACT_CHARS:
-        return {
-            "error": (
-                f"content exceeds {_MAX_ARTIFACT_CHARS} chars "
-                f"({len(content)} given). Split the file or trim first."
-            )
-        }
-
-    artifact_id = await artifacts.save_artifact(
-        type=type,
-        label=label or file.name,
-        content=content,
-        source_path=str(file.resolve()),
-        summary=summary,
-        metadata=metadata,
-    )
-    return {
-        "id": artifact_id,
-        "type": type,
-        "label": label or file.name,
-        "chars": len(content),
-        "citation_label": artifacts.citation_label(
-            {"id": artifact_id, "type": type}  # type: ignore[typeddict-item]
-        ),
-    }
+    return await container.artifact_service.import_file(path, type, label, summary, metadata)
 
 
 @mcp.tool()
@@ -103,24 +46,7 @@ async def add_artifact_inline(
     excerpts typed by the user. Same fields as `import_artifact`, minus the
     path.
     """
-    if len(content) > _MAX_ARTIFACT_CHARS:
-        return {"error": (f"content exceeds {_MAX_ARTIFACT_CHARS} chars ({len(content)} given).")}
-    artifact_id = await artifacts.save_artifact(
-        type=type,
-        label=label,
-        content=content,
-        summary=summary,
-        metadata=metadata,
-    )
-    return {
-        "id": artifact_id,
-        "type": type,
-        "label": label,
-        "chars": len(content),
-        "citation_label": artifacts.citation_label(
-            {"id": artifact_id, "type": type}  # type: ignore[typeddict-item]
-        ),
-    }
+    return await container.artifact_service.add_inline(type, label, content, summary, metadata)
 
 
 @mcp.tool()
@@ -133,36 +59,20 @@ async def list_artifacts(
     Use `get_artifact(id)` for the full content when you need to quote or
     analyse it.
     """
-    records = await artifacts.list_artifacts(type=type, included_only=included_only)
-    # Strip content from listings — keep the context lean.
-    return [
-        {
-            "id": r["id"],
-            "type": r["type"],
-            "label": r["label"],
-            "summary": r.get("summary"),
-            "included": r["included"],
-            "chars": len(r["content"]),
-            "metadata": r.get("metadata", {}),
-            "created_at": r["created_at"],
-        }
-        for r in records
-    ]
+    return await container.artifact_service.list_briefs(type, included_only)
 
 
 @mcp.tool()
 async def get_artifact(artifact_id: int) -> dict[str, Any] | None:
     """Full artifact record including the content body. Use for quoting."""
-    record = await artifacts.load_artifact(artifact_id)
-    return dict(record) if record is not None else None
+    return await container.artifact_service.get(artifact_id)
 
 
 @mcp.tool()
 async def delete_artifact(artifact_id: int) -> dict[str, Any]:
     """Remove an artifact. Hard delete — use `set_artifact_included(False)` to
     exclude from the writing pipeline without losing it."""
-    removed = await artifacts.delete_artifact(artifact_id)
-    return {"deleted": removed, "id": artifact_id}
+    return await container.artifact_service.delete(artifact_id)
 
 
 @mcp.tool()
@@ -173,7 +83,4 @@ async def set_artifact_included(artifact_id: int, included: bool) -> dict[str, A
     `list_artifacts(included_only=True)` and don't land in the
     Primary-sources appendix.
     """
-    updated = await artifacts.set_included(artifact_id, included)
-    if not updated:
-        return {"updated": False, "error": f"artifact {artifact_id} not found"}
-    return {"updated": True, "id": artifact_id, "included": included}
+    return await container.artifact_service.set_included(artifact_id, included)

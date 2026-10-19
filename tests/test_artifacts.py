@@ -4,14 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.artifacts import (
-    citation_label,
-    list_artifacts as _list_artifacts,
-    load_artifact,
-    load_artifacts_by_ids,
-    save_artifact,
-    set_included,
-)
+from snowcite.container import container
+from snowcite.domain.artifacts import citation_label
 from snowcite.render.snippets import (
     include_code,
     primary_sources_appendix,
@@ -35,14 +29,14 @@ from snowcite.tools.writing import (
 
 @pytest.mark.asyncio
 async def test_save_and_load_roundtrip(tmp_project: Path):
-    aid = await save_artifact(
-        type="interview",
-        label="P03 transcript",
+    aid = await container.artifacts.save(
+        "interview",
+        "P03 transcript",
         content="Q: ... A: ...",
         summary="First pilot interview",
         metadata={"participant": "P03"},
     )
-    record = await load_artifact(aid)
+    record = await container.artifacts.load(aid)
     assert record is not None
     assert record["type"] == "interview"
     assert record["label"] == "P03 transcript"
@@ -53,31 +47,20 @@ async def test_save_and_load_roundtrip(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_list_filters_by_type_and_included(tmp_project: Path):
-    await save_artifact(type="interview", label="i1", content="x")
-    await save_artifact(type="code", label="c1", content="def f(): pass")
-    cid = await save_artifact(type="code", label="c2", content="# notes")
-    await set_included(cid, False)
+    await container.artifacts.save(type="interview", label="i1", content="x")
+    await container.artifacts.save(type="code", label="c1", content="def f(): pass")
+    cid = await container.artifacts.save(type="code", label="c2", content="# notes")
+    await container.artifacts.set_included(cid, False)
 
-    interviews = await _list_artifacts(type="interview")
+    interviews = await container.artifacts.list(type="interview")
     assert len(interviews) == 1
 
-    code_all = await _list_artifacts(type="code")
+    code_all = await container.artifacts.list(type="code")
     assert len(code_all) == 2
 
-    code_included = await _list_artifacts(type="code", included_only=True)
+    code_included = await container.artifacts.list(type="code", included_only=True)
     assert len(code_included) == 1
     assert code_included[0]["label"] == "c1"
-
-
-@pytest.mark.asyncio
-async def test_load_artifacts_by_ids_preserves_order(tmp_project: Path):
-    a = await save_artifact(type="note", label="a", content="first")
-    b = await save_artifact(type="note", label="b", content="second")
-    c = await save_artifact(type="note", label="c", content="third")
-
-    records = await load_artifacts_by_ids([c, a, b])
-    # Function orders by id ascending, not by input order.
-    assert [r["id"] for r in records] == sorted([a, b, c])
 
 
 def test_citation_label_format():
@@ -240,3 +223,19 @@ async def test_generate_primary_sources_appendix_entries_count(tmp_project: Path
     out = await generate_primary_sources_appendix(backend="typst")
     assert out["entries"] == 2
     assert "P01" in out["snippet"]
+
+
+@pytest.mark.asyncio
+async def test_critique_inputs_list_included_artifacts_without_content(tmp_project: Path):
+    keep = await container.artifacts.save(
+        type="interview", label="P01", content="Q: secret body", summary="Pilot"
+    )
+    drop = await container.artifacts.save(type="note", label="skip", content="x")
+    await container.artifacts.set_included(drop, False)
+    sec = await container.section_service.create("Findings", None, None, None)
+
+    out = await container.section_service.critique_inputs(sec["id"])
+    assert [a["id"] for a in out["artifacts"]] == [keep]
+    art = out["artifacts"][0]
+    assert art["citation_label"] == f"[I:{keep}]" and art["summary"] == "Pilot"
+    assert "content" not in art

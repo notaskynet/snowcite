@@ -8,7 +8,7 @@ per-backend code paths easy to find when adding new standards.
 
 from typing import Any
 
-from snowcite.artifacts import citation_label
+from snowcite.domain.artifacts import citation_label
 from snowcite.domain.types import ArtifactRecord, Backend
 from snowcite.render.bibliography import escape_latex
 

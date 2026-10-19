@@ -28,10 +28,12 @@ from snowcite.container import container
 async def get_section_critique_inputs(section_id: int) -> dict[str, Any]:
     """Bundle everything needed to critique a section in one call.
 
-    Returns `{section, notes, linked_papers}`:
+    Returns `{section, notes, artifacts, linked_papers}`:
     - `section`: full section row including current draft and severity state.
     - `notes`: per-paper + cross-paper notes whose `cluster` overlaps the
       section's `scope.clusters`. The corpus the section's claims should rest on.
+    - `artifacts`: included research artifacts (interviews, code, …) as briefs —
+      id, citation_label, summary, size, no content; fetch bodies with `get_artifact`.
     - `linked_papers`: papers connected via `paper_section_links`, with title
       / year / venue / review_status. Used to check that cited papers are
       actually approved and on-scope.
