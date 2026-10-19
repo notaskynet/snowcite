@@ -13,8 +13,8 @@ re-reading abstracts. Tool layer enforces the per-paper vs cross-paper split:
 from typing import Any
 
 from snowcite.app import mcp
-from snowcite.db import get_connection
-from snowcite.types import (
+from snowcite.container import container
+from snowcite.domain.types import (
     CROSS_PAPER_NOTE_TYPES,
     PER_PAPER_NOTE_TYPES,
     NoteLinkKind,
@@ -52,7 +52,7 @@ async def add_note(
     if not text.strip():
         return {"error": "text is empty"}
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "INSERT INTO notes (paper_id, cluster, type, text) VALUES (?, ?, ?, ?)",
             (paper_id, cluster, type, text.strip()),
@@ -71,7 +71,7 @@ async def add_notes(notes: list[dict[str, Any]]) -> dict[str, Any]:
     """
     inserted_ids: list[int] = []
     errors: list[dict[str, Any]] = []
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         for idx, item in enumerate(notes):
             note_type = item.get("type")
             text = item.get("text", "")
@@ -122,7 +122,7 @@ async def get_notes(
     query += " ORDER BY id DESC LIMIT ?"
     params.append(limit)
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()
     return [dict(r) for r in rows]
@@ -145,7 +145,7 @@ async def update_note(
     if text is None and type is None and cluster is None:
         return {"error": "no fields to update"}
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT paper_id, type FROM notes WHERE id = ?", (note_id,))
         row = await cur.fetchone()
         if row is None:
@@ -183,7 +183,7 @@ async def update_note(
 @mcp.tool()
 async def delete_note(note_id: int) -> dict[str, Any]:
     """Remove a note and any links touching it. Idempotent — missing id is a no-op."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
         await conn.commit()
     return {"deleted": cur.rowcount}
@@ -201,7 +201,7 @@ async def link_notes(
     cross-paper synthesis (Phase 2) to anchor `gap`/`contradiction`/etc. notes
     to the per-paper notes that prompted them.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         await conn.execute(
             "INSERT OR IGNORE INTO note_links (from_note_id, to_note_id, kind) VALUES (?, ?, ?)",
             (from_note_id, to_note_id, kind),
@@ -228,7 +228,7 @@ async def get_note_density(cluster: str | None = None) -> dict[str, Any]:
         params.append(cluster)
     query += " GROUP BY cluster, type ORDER BY cluster, type"
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()
 

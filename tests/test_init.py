@@ -6,8 +6,8 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from snowcite.db import _initialized, get_db_path
-from snowcite.projects import create_project_dir
+from snowcite.container import container
+from snowcite.storage.projects import create_project_dir, get_db_path
 from snowcite.tools.init import (
     apply_settings_diff,
     get_project_metadata,
@@ -20,7 +20,7 @@ def isolated_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Fresh cwd with no .snowcite/ and no env override — the init_project target."""
     monkeypatch.delenv("SNOWCITE_PROJECT_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
-    _initialized.clear()
+    container.db.reset()
     return tmp_path
 
 
@@ -66,7 +66,7 @@ async def test_init_migrates_existing_db_without_target_columns(
             """
         )
         await conn.commit()
-    _initialized.clear()  # force re-run of migrations on next connect
+    container.db.reset()  # force re-run of migrations on next connect
 
     await init_project(metadata={"target_pages": 15})
     meta = await get_project_metadata()

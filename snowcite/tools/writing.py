@@ -15,19 +15,14 @@ from snowcite.artifacts import (
     load_artifact,
     load_artifacts_by_ids,
 )
-from snowcite.db import get_connection
-from snowcite.persistence import (
-    load_approved_papers,
-    load_document_sections,
-    load_papers_by_ids,
-)
+from snowcite.container import container
+from snowcite.domain.types import Backend, DriftWarning, OutlineSection
 from snowcite.rendering import (
     include_code,
     overview_table,
     primary_sources_appendix,
     prisma_flow,
 )
-from snowcite.types import Backend, DriftWarning, OutlineSection
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -61,7 +56,7 @@ async def _load_singleton(table: str) -> dict[str, Any] | None:
         raise ValueError(f"unknown singleton table: {table!r}")
     # Static branch avoids an f-string SQL (lint-friendly) and keeps the lookup
     # transparent — there are only two singleton tables.
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         if table == "outline":
             cur = await conn.execute(
                 "SELECT id, sections_json, approved, created_at, updated_at "
@@ -91,7 +86,7 @@ async def save_outline(sections: list[dict[str, Any]]) -> dict[str, Any]:
     any prior outline in this project; that's intentional — the user iterates
     by re-proposing, not by editing.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         await conn.execute(
             """
             INSERT INTO outline (id, sections_json, approved, updated_at)
@@ -116,7 +111,7 @@ async def get_outline() -> dict[str, Any] | None:
 @mcp.tool()
 async def approve_outline() -> dict[str, Any]:
     """Mark the current outline as approved by the user. Required before write_skeleton."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT 1 FROM outline WHERE id = 1")
         if await cur.fetchone() is None:
             return {"approved": False, "error": "no outline to approve — run save_outline first"}
@@ -152,7 +147,7 @@ async def save_skeleton(sections: list[dict[str, Any]]) -> dict[str, Any]:
         if extra:
             warnings.append(f"skeleton has sections not in outline: {sorted(extra)}")
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         await conn.execute(
             """
             INSERT INTO skeleton (id, sections_json, approved, updated_at)
@@ -181,7 +176,7 @@ async def get_skeleton() -> dict[str, Any] | None:
 @mcp.tool()
 async def approve_skeleton() -> dict[str, Any]:
     """Mark skeleton as approved. Required before expand_section calls."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT 1 FROM skeleton WHERE id = 1")
         if await cur.fetchone() is None:
             return {"approved": False, "error": "no skeleton to approve — run save_skeleton first"}
@@ -264,7 +259,7 @@ async def save_section(name: str, content: str) -> dict[str, Any]:
     Drift-checking is a separate tool (`check_section_drift`) so Claude can ask
     the user before persisting; this tool just writes whatever it was given.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT version FROM section_content WHERE name = ?", (name,))
         row = await cur.fetchone()
         next_version = (row["version"] + 1) if row else 1
@@ -306,7 +301,7 @@ async def save_thesis(content: str) -> dict[str, Any]:
     text = content.strip()
     if not text:
         return {"error": "thesis content is empty"}
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         await conn.execute(
             """
             INSERT INTO thesis (id, content, updated_at)
@@ -324,7 +319,7 @@ async def save_thesis(content: str) -> dict[str, Any]:
 @mcp.tool()
 async def get_thesis() -> dict[str, Any] | None:
     """Read the stored thesis. Returns None if never set."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT content, updated_at FROM thesis WHERE id = 1")
         row = await cur.fetchone()
     if row is None:
@@ -356,7 +351,7 @@ async def gap_check(
     """
     rows = [
         {"name": r["title"], "content": r["content"]}
-        for r in await load_document_sections()
+        for r in await container.sections.load_document_sections()
         if sections is None or r["title"] in sections
     ]
 
@@ -432,7 +427,7 @@ async def rewrite_citations(
     total_replaced = 0
     modified: list[dict[str, Any]] = []
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         if sections is None:
             cur = await conn.execute("SELECT name, content, version FROM section_content")
         else:
@@ -499,7 +494,7 @@ async def regenerate_section_brief(name: str, feedback: str) -> dict[str, Any]:
     considers the outline target (word count + paper_ids) and has the
     feedback threaded through.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT content, word_count, version, polished FROM section_content WHERE name = ?",
             (name,),
@@ -521,7 +516,7 @@ async def regenerate_section_brief(name: str, feedback: str) -> dict[str, Any]:
             paper_ids = outline_entry.get("paper_ids") or []
             artifact_ids = outline_entry.get("artifact_ids") or []
 
-    assigned_papers = await load_papers_by_ids(paper_ids)
+    assigned_papers = await container.papers.load_by_ids(paper_ids)
     assigned_artifacts = [
         dict(a) for a in await load_artifacts_by_ids(artifact_ids) if a["included"]
     ]
@@ -546,7 +541,7 @@ async def regenerate_section_brief(name: str, feedback: str) -> dict[str, Any]:
 @mcp.tool()
 async def get_section_content(name: str) -> dict[str, Any] | None:
     """One v0.2 section body by name (see `get_section` for v0.3 sections by id)."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT name, content, word_count, version, polished, updated_at "
             "FROM section_content WHERE name = ?",
@@ -561,7 +556,7 @@ async def get_section_content(name: str) -> dict[str, Any] | None:
 @mcp.tool()
 async def list_section_contents() -> list[dict[str, Any]]:
     """All persisted v0.2 section bodies with metadata (no content bodies). For session restore."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT name, word_count, version, polished, updated_at "
             "FROM section_content ORDER BY updated_at"
@@ -581,7 +576,7 @@ async def polish_section(name: str, polished_content: str) -> dict[str, Any]:
     needed; it's distinct from `polish_document` which is a global pass.
     """
     wc = _word_count(polished_content)
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT version FROM section_content WHERE name = ?", (name,))
         row = await cur.fetchone()
         if row is None:
@@ -609,7 +604,7 @@ async def polish_document(sections: list[dict[str, str]]) -> dict[str, Any]:
     """
     updated: list[str] = []
     missing: list[str] = []
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         for s in sections:
             name = s["name"]
             cur = await conn.execute("SELECT version FROM section_content WHERE name = ?", (name,))
@@ -643,7 +638,7 @@ async def _prisma_counts() -> dict[str, Any]:
     excluded = #papers currently rejected, grouped by distinct reason
     included = #papers currently approved
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         # identified: distinct papers that ever passed through review_history.
         cur = await conn.execute("SELECT COUNT(DISTINCT paper_id) FROM review_history")
         identified = (await cur.fetchone())[0]
@@ -728,7 +723,7 @@ async def generate_overview_table(
     Default: ["author", "year", "title", "venue"].
     """
     columns = columns or ["author", "year", "title", "venue"]
-    papers = await load_approved_papers()
+    papers = await container.papers.load_approved()
     records: list[dict[str, Any]] = [
         {
             "author": p["authors"][0].split()[-1] if p["authors"] else "",

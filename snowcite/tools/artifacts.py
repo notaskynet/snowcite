@@ -9,7 +9,7 @@ from typing import Any
 
 from snowcite import artifacts
 from snowcite.app import mcp
-from snowcite.types import ArtifactType
+from snowcite.domain.types import ArtifactType
 
 
 # 200k characters is roughly a 1-hour interview transcript or a small

@@ -2,7 +2,7 @@
 
 We parse a deliberately-narrow subset of both formats (enough for reference
 manager exports from Mendeley, EndNote, Zotero-via-BibTeX, etc.) and route
-the resulting papers through `snowcite.persistence.persist_papers` — same
+the resulting papers through `PaperRepository.persist` — same
 DB write path as `search_papers`.
 
 Papers missing an abstract get best-effort enrichment via OpenAlex / Semantic
@@ -18,12 +18,12 @@ import httpx
 from pydantic import ValidationError
 
 from snowcite.app import mcp
-from snowcite.dedup import normalize_doi
+from snowcite.container import container
+from snowcite.domain.dedup import normalize_doi
+from snowcite.domain.models import Paper
 from snowcite.logging import log
-from snowcite.persistence import persist_papers
 from snowcite.settings import settings
 from snowcite.sources._http import http_get
-from snowcite.sources.base import Paper
 
 
 _OPENALEX_BASE = "https://api.openalex.org"
@@ -286,7 +286,7 @@ async def _enrich_abstracts(papers: list[Paper]) -> list[Paper]:
 async def _import_core(papers: list[Paper], enrich: bool) -> dict[str, Any]:
     if enrich:
         papers = await _enrich_abstracts(papers)
-    persisted = await persist_papers(papers)
+    persisted = await container.papers.persist(papers)
     no_abstract = sum(1 for p in papers if not p.abstract)
     return {
         "parsed": len(papers),

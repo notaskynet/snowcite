@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.init import init_project
 from snowcite.tools.review import (
     _count_cites,
@@ -39,7 +39,7 @@ async def test_get_review_progress_computes_density_and_warnings(
             "citation_density_target": 2.0,
         }
     )
-    await persist_papers(
+    await container.papers.persist(
         [Paper(source="arxiv", source_id="a", title="A", authors=["X"], year=2024)]
     )
     await set_review_status([1], "approved", reason="t", reviewed_by="auto_high")
@@ -63,7 +63,9 @@ async def test_get_review_progress_no_targets_returns_plain_snapshot(tmp_project
 
 @pytest.mark.asyncio
 async def test_get_unreviewed_omits_abstract_by_default(tmp_project: Path):
-    await persist_papers([Paper(source="arxiv", source_id="x", title="T", abstract="ABS")])
+    await container.papers.persist(
+        [Paper(source="arxiv", source_id="x", title="T", abstract="ABS")]
+    )
     rows = await get_unreviewed_papers(limit=10)
     assert len(rows) == 1
     # Compact mode: abstract field is removed entirely, not just nulled.
@@ -72,6 +74,8 @@ async def test_get_unreviewed_omits_abstract_by_default(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_get_unreviewed_includes_abstract_when_requested(tmp_project: Path):
-    await persist_papers([Paper(source="arxiv", source_id="x", title="T", abstract="ABS")])
+    await container.papers.persist(
+        [Paper(source="arxiv", source_id="x", title="T", abstract="ABS")]
+    )
     rows = await get_unreviewed_papers(limit=10, include_abstracts=True)
     assert rows[0]["abstract"] == "ABS"

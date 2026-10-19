@@ -163,14 +163,13 @@ snowcite/
 ├── server.py              # MCP entrypoint (installed as `snowcite` console script)
 ├── app.py                 # FastMCP instance shared by all tool modules
 ├── settings.py            # pydantic-settings, env SNOWCITE_*
-├── projects.py            # .snowcite/ resolver (walk-up from cwd)
-├── db.py                  # aiosqlite schema, migrations, get_connection
-├── persistence.py         # DB write path (persist_papers, load_approved_papers, ...)
+├── container.py           # builds Database + repositories (the one wiring point)
+├── domain/                # pure: models (Paper, ...), types (Literals), dedup
+├── storage/               # Database, schema + migrations, projects.py (.snowcite/ resolver),
+│   └── repositories/      #   PaperRepository, ReviewRepository, SectionRepository
 ├── rendering.py           # backend-aware PRISMA / overview renderers
 ├── bibliography.py        # BibTeX + Hayagriva generation
-├── dedup.py               # title + DOI normalisation, fuzzy match
 ├── logging.py             # shared `log` instance
-├── types.py               # Literal aliases + TypedDicts
 ├── sources/               # arxiv / semantic_scholar / openalex / crossref / pubmed + _http
 ├── templates/             # latex/*.tex.j2, typst/*.typ.j2, agents/*.md.j2, claude_md.j2
 └── tools/                 # search, review, writing, compile, export, doctor, init,

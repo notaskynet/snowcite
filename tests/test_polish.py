@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.export import export_bibtex, export_ris
 from snowcite.tools.review import (
     bulk_reclassify,
@@ -26,7 +26,7 @@ from snowcite.tools.writing import (
 
 @pytest.mark.asyncio
 async def test_undo_reverts_last_action_to_unreviewed(tmp_project: Path):
-    await persist_papers([Paper(source="arxiv", source_id="x", title="T")])
+    await container.papers.persist([Paper(source="arxiv", source_id="x", title="T")])
     await set_review_status([1], "approved", reason="r", reviewed_by="auto_high")
 
     r = await undo_last_review_action()
@@ -37,7 +37,7 @@ async def test_undo_reverts_last_action_to_unreviewed(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_undo_restores_previous_status_when_not_first(tmp_project: Path):
-    await persist_papers([Paper(source="arxiv", source_id="x", title="T")])
+    await container.papers.persist([Paper(source="arxiv", source_id="x", title="T")])
     await set_review_status([1], "approved", reason="r1", reviewed_by="auto_high")
     await set_review_status([1], "rejected", reason="r2", reviewed_by="auto_high")
 
@@ -56,7 +56,7 @@ async def test_undo_empty_history_is_noop(tmp_project: Path):
 async def test_undo_does_not_leave_orphan_history_row(tmp_project: Path):
     """The history row for the undone action should itself be removed, so that a
     second undo walks further back rather than replaying the same entry."""
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(source="arxiv", source_id="a", title="A"),
             Paper(source="arxiv", source_id="b", title="B"),
@@ -76,7 +76,7 @@ async def test_undo_does_not_leave_orphan_history_row(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_bulk_reclassify_by_status(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [Paper(source="arxiv", source_id=str(i), title=f"P{i}") for i in range(1, 6)]
     )
     await set_review_status([1, 2, 3], "approved", reason="r", reviewed_by="auto_high")
@@ -93,7 +93,7 @@ async def test_bulk_reclassify_by_status(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_bulk_reclassify_by_source(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(source="arxiv", source_id="1", title="A"),
             Paper(source="openalex", source_id="2", title="B"),
@@ -109,7 +109,7 @@ async def test_bulk_reclassify_by_source(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_bulk_reclassify_by_cluster(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [Paper(source="arxiv", source_id=str(i), title=f"P{i}") for i in range(1, 4)]
     )
     await set_review_status([1, 2, 3], "approved", reason="r", reviewed_by="auto_high")
@@ -138,7 +138,7 @@ async def test_bulk_reclassify_unknown_cluster(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_bulk_reclassify_empty_filter(tmp_project: Path):
-    await persist_papers([Paper(source="arxiv", source_id="1", title="P")])
+    await container.papers.persist([Paper(source="arxiv", source_id="1", title="P")])
     r = await bulk_reclassify(
         new_status="rejected",
         reason="test",
@@ -152,7 +152,7 @@ async def test_bulk_reclassify_empty_filter(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_regenerate_brief_bundles_section_and_feedback(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [Paper(source="openalex", source_id="1", title="P", year=2024, abstract="abs text")]
     )
     await save_outline([{"name": "intro", "target_words": 300, "paper_ids": [1]}])
@@ -179,7 +179,7 @@ async def test_regenerate_brief_missing_section_errors(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_export_bibtex_writes_file(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(
                 source="openalex",
@@ -205,7 +205,7 @@ async def test_export_bibtex_writes_file(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_export_bibtex_custom_path(tmp_project: Path):
-    await persist_papers([Paper(source="arxiv", source_id="1", title="P", year=2024)])
+    await container.papers.persist([Paper(source="arxiv", source_id="1", title="P", year=2024)])
     await set_review_status([1], "approved", reason="r", reviewed_by="auto_high")
     target = tmp_project / "custom.bib"
     r = await export_bibtex(output_path=str(target))
@@ -215,7 +215,7 @@ async def test_export_bibtex_custom_path(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_export_ris_writes_file(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(
                 source="openalex",

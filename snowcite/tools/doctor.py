@@ -14,10 +14,10 @@ from typing import Any
 import httpx
 
 from snowcite.app import mcp
-from snowcite.projects import find_project_root
+from snowcite.domain.types import Severity  # re-exported for type callers
 from snowcite.settings import settings
 from snowcite.sources._http import get_client
-from snowcite.types import Severity  # re-exported for type callers
+from snowcite.storage.projects import find_project_root
 
 
 HTTP_SERVER_ERROR = 500

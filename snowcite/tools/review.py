@@ -7,10 +7,9 @@ from typing import Any
 import aiosqlite
 
 from snowcite.app import mcp
-from snowcite.db import get_connection
-from snowcite.persistence import load_document_sections, resolve_cluster_paper_ids
+from snowcite.container import container
+from snowcite.domain.types import PER_PAPER_NOTE_TYPES, ReviewedBy, Source, Status
 from snowcite.tools.common import paper_row_to_dict
-from snowcite.types import PER_PAPER_NOTE_TYPES, ReviewedBy, Source, Status
 
 
 # Same cite-ref shape recognised by bibliography.rewrite_cite_refs. Duplicated
@@ -47,7 +46,7 @@ async def _mark_summary_stale(conn: aiosqlite.Connection) -> None:
 @mcp.tool()
 async def set_review_criteria(criteria_text: str) -> dict[str, int]:
     """Store inclusion/exclusion criteria (and optionally user-defined categories). Returns {id}."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "INSERT INTO review_criteria (criteria_text) VALUES (?)",
             (criteria_text,),
@@ -59,7 +58,7 @@ async def set_review_criteria(criteria_text: str) -> dict[str, int]:
 @mcp.tool()
 async def get_review_criteria() -> dict[str, Any] | None:
     """Latest criteria. Claude must call this before each review batch (drift guard)."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT id, criteria_text, created_at FROM review_criteria ORDER BY id DESC LIMIT 1"
         )
@@ -116,7 +115,7 @@ async def get_unreviewed_papers(
     query += " ORDER BY p.id LIMIT ?"
     params.append(limit)
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()
     out = [paper_row_to_dict(r) for r in rows]
@@ -155,7 +154,7 @@ async def get_low_confidence_reviews(
     query += " ORDER BY r.reviewed_at DESC LIMIT ?"
     params.append(limit)
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()
     return [paper_row_to_dict(r) for r in rows]
@@ -209,7 +208,7 @@ async def set_review_status(
     updated = 0
     skipped: list[int] = []
     inserted_note_ids: list[int] = []
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         for idx, pid in enumerate(paper_ids):
             # Per-paper SAVEPOINT so a mid-batch failure rolls back that paper
             # alone — `reviews` and `review_history` always move together.
@@ -301,7 +300,7 @@ async def bulk_reclassify(
     # Resolve cluster → paper_ids via review_summary (shared helper).
     cluster_ids: list[int] | None = None
     if cluster is not None:
-        resolved = await resolve_cluster_paper_ids(cluster)
+        resolved = await container.reviews.resolve_cluster_paper_ids(cluster)
         if isinstance(resolved, dict):
             return {"updated": 0, **resolved}
         cluster_ids = resolved
@@ -331,7 +330,7 @@ async def bulk_reclassify(
         query += " LIMIT ?"
         params.append(limit)
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(query, params)
         target_ids = [r["id"] for r in await cur.fetchall()]
 
@@ -358,7 +357,7 @@ async def undo_last_review_action() -> dict[str, Any]:
     Useful when Claude mis-classifies a borderline paper as auto_high and the
     user catches it. Does not undo bulk operations — call multiple times.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             """
             SELECT id, paper_id, old_status, new_status, reason, reviewed_by
@@ -424,7 +423,7 @@ async def get_review_progress() -> dict[str, Any]:
     Writing metrics (words, citations, density) come from stored section
     drafts; they're zero when no sections are written yet.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         counts = await _get_live_counts(conn)
 
         cur = await conn.execute(
@@ -437,7 +436,7 @@ async def get_review_progress() -> dict[str, Any]:
         meta = await cur.fetchone()
         targets = {k: meta[k] for k in meta.keys() if meta[k] is not None} if meta else {}
 
-    document_sections = await load_document_sections()
+    document_sections = await container.sections.load_document_sections()
     total_words = 0
     total_cites = 0
     for section in document_sections:
@@ -487,7 +486,7 @@ async def save_review_summary(
     clusters: list[dict[str, Any]],
 ) -> dict[str, str]:
     """UPSERT singleton review summary (≤500 words). Called after each review batch."""
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         counts = await _get_live_counts(conn)
         await conn.execute(
             """
@@ -513,7 +512,7 @@ async def get_review_summary() -> dict[str, Any] | None:
     Returns None if no summary exists yet (first batch).
     Includes 'warnings' list if counts diverge from snapshot.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT summary, clusters_json, counts_snapshot_json, stale, updated_at "
             "FROM review_summary WHERE id = 1"
@@ -563,7 +562,7 @@ async def get_papers_for_writing(
     """
     paper_ids: list[int] | None = None
     if cluster:
-        resolved = await resolve_cluster_paper_ids(cluster)
+        resolved = await container.reviews.resolve_cluster_paper_ids(cluster)
         if isinstance(resolved, dict):
             return [resolved]
         paper_ids = resolved
@@ -583,7 +582,7 @@ async def get_papers_for_writing(
     query += " ORDER BY p.year, p.id LIMIT ? OFFSET ?"
     params.extend([limit, offset])
 
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()
     return [paper_row_to_dict(r) for r in rows]

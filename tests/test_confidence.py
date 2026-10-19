@@ -5,10 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.db import _initialized, init_db
-from snowcite.persistence import persist_papers
-from snowcite.projects import create_project_dir
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
+from snowcite.storage.projects import create_project_dir
 from snowcite.tools.review import (
     get_low_confidence_reviews,
     get_unreviewed_papers,
@@ -18,7 +17,7 @@ from snowcite.tools.review import (
 
 @pytest.mark.asyncio
 async def test_set_review_status_accepts_high_and_low(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(source="arxiv", source_id="a", title="Paper A"),
             Paper(source="arxiv", source_id="b", title="Paper B"),
@@ -34,7 +33,7 @@ async def test_set_review_status_accepts_high_and_low(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_get_low_confidence_reviews_filters_correctly(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(source="arxiv", source_id="a", title="High-confidence approve"),
             Paper(source="arxiv", source_id="b", title="Low-confidence approve"),
@@ -52,7 +51,7 @@ async def test_get_low_confidence_reviews_filters_correctly(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_low_confidence_filter_by_status(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(source="arxiv", source_id="a", title="Low approve"),
             Paper(source="arxiv", source_id="b", title="Low reject"),
@@ -71,7 +70,7 @@ async def test_migration_legacy_auto_becomes_auto_high(tmp_path: Path, monkeypat
     """Simulate a pre-T27 DB created with the old CHECK constraint."""
     create_project_dir(tmp_path)
     monkeypatch.setenv("SNOWCITE_PROJECT_ROOT", str(tmp_path))
-    _initialized.clear()
+    container.db.reset()
 
     db_path = tmp_path / ".snowcite" / "papers.db"
 
@@ -105,8 +104,8 @@ async def test_migration_legacy_auto_becomes_auto_high(tmp_path: Path, monkeypat
     conn.commit()
     conn.close()
 
-    # Run migration via init_db.
-    await init_db(db_path)
+    # Run migration via Database.init.
+    await container.db.init(db_path)
 
     # Legacy 'auto' should now be 'auto_high'.
     conn = sqlite3.connect(db_path)
@@ -118,8 +117,8 @@ async def test_migration_legacy_auto_becomes_auto_high(tmp_path: Path, monkeypat
 @pytest.mark.asyncio
 async def test_migration_is_idempotent(tmp_project: Path):
     """Running init_db twice on an already-migrated DB should be a no-op."""
-    await init_db()  # second call — db already has new CHECK
-    await init_db()  # third call
+    await container.db.init()  # second call — db already has new CHECK
+    await container.db.init()  # third call
     # If this didn't raise, we're good. Table integrity by inserting a row:
-    await persist_papers([Paper(source="arxiv", source_id="z", title="Z")])
+    await container.papers.persist([Paper(source="arxiv", source_id="z", title="Z")])
     await set_review_status([1], "approved", reason="x", reviewed_by="auto_high")

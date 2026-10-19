@@ -12,8 +12,7 @@ from typing import Any, Literal
 
 from snowcite.app import mcp
 from snowcite.artifacts import load_artifacts_by_ids
-from snowcite.db import get_connection
-from snowcite.persistence import load_papers_by_ids
+from snowcite.container import container
 
 
 type Reviewer = Literal["academic", "humanizer"]
@@ -34,7 +33,7 @@ async def prepare_section_for_review(
     Set `include_paper_abstracts=False` to skip abstract bodies when the
     section cites many papers and the reviewer just needs the title/DOI.
     """
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute(
             "SELECT name, content, word_count, version, polished, updated_at "
             "FROM section_content WHERE name = ?",
@@ -72,7 +71,7 @@ async def prepare_section_for_review(
             {k: meta_row[k] for k in meta_row.keys() if meta_row[k] is not None} if meta_row else {}
         )
 
-    assigned_papers = await load_papers_by_ids(assigned_paper_ids)
+    assigned_papers = await container.papers.load_by_ids(assigned_paper_ids)
     if not include_paper_abstracts:
         for p in assigned_papers:
             p.pop("abstract", None)

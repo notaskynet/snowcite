@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.review import set_review_status
 from snowcite.tools.writing import (
     approve_outline,
@@ -216,7 +216,7 @@ async def test_polish_document_updates_existing_skips_missing(tmp_project: Path)
 
 @pytest.mark.asyncio
 async def test_prisma_flow_reflects_review_history(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [Paper(source="arxiv", source_id=str(i), title=f"p{i}") for i in range(1, 5)]
     )
     await set_review_status([1, 2], "approved", reason="r", reviewed_by="auto_high")
@@ -245,7 +245,7 @@ async def test_prisma_flow_latex_backend(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_overview_table_typst_contains_approved_papers(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(
                 source="openalex",
@@ -278,7 +278,7 @@ async def test_overview_table_typst_contains_approved_papers(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_overview_table_latex_longtable(tmp_project: Path):
-    await persist_papers(
+    await container.papers.persist(
         [Paper(source="openalex", source_id="1", title="T", authors=["J Doe"], year=2024)]
     )
     await set_review_status([1], "approved", reason="r", reviewed_by="auto_high")

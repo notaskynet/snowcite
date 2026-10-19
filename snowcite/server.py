@@ -10,9 +10,9 @@ import shutil
 import sys
 
 from snowcite.app import mcp
-from snowcite.db import init_db
-from snowcite.projects import NoProjectError
+from snowcite.container import container
 from snowcite.sources._http import close_client
+from snowcite.storage.projects import NoProjectError
 
 # Importing tool modules registers their @mcp.tool() decorators. `compile`
 # shadows a Python builtin so it gets an alias.
@@ -68,7 +68,7 @@ def _try_init_db() -> None:
     not need a pre-existing project.
     """
     try:
-        asyncio.run(init_db())
+        asyncio.run(container.db.init())
     except NoProjectError:
         pass
 

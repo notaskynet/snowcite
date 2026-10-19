@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.compile import (
     _pdf_page_count,
     compile_pdf,
@@ -18,7 +18,7 @@ from snowcite.tools.review import set_review_status
 
 
 async def _seed_approved(paper: Paper) -> None:
-    await persist_papers([paper])
+    await container.papers.persist([paper])
     await set_review_status([1], "approved", reason="test", reviewed_by="auto_high")
 
 
@@ -86,7 +86,7 @@ async def test_write_document_typst_produces_typ_and_yml(tmp_project: Path):
 @pytest.mark.asyncio
 async def test_write_document_includes_bib_only_for_approved(tmp_project: Path):
     # Seed one approved and one rejected — only approved should appear in bib.
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(source="openalex", source_id="1", title="Keeper", doi="10.1/a"),
             Paper(source="openalex", source_id="2", title="Dropped", doi="10.1/b"),

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.db import get_connection
+from snowcite.container import container
 from snowcite.tools.sections import (
     bulk_create_sections,
     create_section,
@@ -123,7 +123,7 @@ async def test_delete_cascades_to_children(tmp_project: Path):
 
 @pytest.mark.asyncio
 async def test_get_outline_inputs(tmp_project: Path):
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         await conn.execute("INSERT INTO thesis (id, content) VALUES (1, 'thesis text')")
         await conn.execute(
             "INSERT INTO review_summary "

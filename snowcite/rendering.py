@@ -10,7 +10,7 @@ from typing import Any
 
 from snowcite.artifacts import citation_label
 from snowcite.bibliography import escape_latex
-from snowcite.types import ArtifactRecord, Backend
+from snowcite.domain.types import ArtifactRecord, Backend
 
 
 # ─── PRISMA flow ────────────────────────────────────────────────────────────

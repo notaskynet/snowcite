@@ -6,9 +6,8 @@ from typing import Any
 
 import pytest
 
-from snowcite.db import get_connection
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.research import (
     get_section_papers,
     link_paper_to_section,
@@ -32,7 +31,7 @@ async def test_research_section_runs_per_query_and_links(
         scope={"keywords": ["graph attention", "GAT"], "questions": ["what is sparse attention?"]},
     )
     # Pre-seed three papers to be returned as "newly discovered" by search.
-    await persist_papers(
+    await container.papers.persist(
         [
             Paper(source="arxiv", source_id="x1", title="P1"),
             Paper(source="arxiv", source_id="x2", title="P2"),
@@ -94,7 +93,7 @@ async def test_research_section_propagates_failed_sources(
 @pytest.mark.asyncio
 async def test_link_and_unlink_paper(tmp_project: Path):
     sec = await create_section(title="X")
-    await persist_papers([Paper(source="arxiv", source_id="a", title="A")])
+    await container.papers.persist([Paper(source="arxiv", source_id="a", title="A")])
 
     res = await link_paper_to_section(paper_id=1, section_id=sec["id"], via_query="manual")
     assert res["linked"] is True
@@ -117,7 +116,7 @@ async def test_link_paper_validates_both_ends(tmp_project: Path):
     bad_paper = await link_paper_to_section(paper_id=99999, section_id=sec["id"])
     assert "error" in bad_paper
 
-    await persist_papers([Paper(source="arxiv", source_id="a", title="A")])
+    await container.papers.persist([Paper(source="arxiv", source_id="a", title="A")])
     bad_section = await link_paper_to_section(paper_id=1, section_id=99999)
     assert "error" in bad_section
 
@@ -125,11 +124,11 @@ async def test_link_paper_validates_both_ends(tmp_project: Path):
 @pytest.mark.asyncio
 async def test_section_delete_cascades_links(tmp_project: Path):
     sec = await create_section(title="X")
-    await persist_papers([Paper(source="arxiv", source_id="a", title="A")])
+    await container.papers.persist([Paper(source="arxiv", source_id="a", title="A")])
     await link_paper_to_section(paper_id=1, section_id=sec["id"])
 
     await update_section(section_id=sec["id"], title="Renamed")
     await delete_section(section_id=sec["id"])
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         cur = await conn.execute("SELECT COUNT(*) FROM paper_section_links")
         assert (await cur.fetchone())[0] == 0

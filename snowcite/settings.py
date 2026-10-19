@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     """Global settings derived from env (`SNOWCITE_*`).
 
     Project-specific state (database path, metadata, etc.) is resolved per-call
-    via `snowcite.projects` — it lives in `<project>/.snowcite/`, not here.
+    via `snowcite.storage.projects` — it lives in `<project>/.snowcite/`, not here.
     """
 
     semantic_scholar_api_key: str | None = None

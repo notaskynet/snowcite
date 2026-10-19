@@ -4,9 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from snowcite.db import get_connection
-from snowcite.persistence import persist_papers
-from snowcite.sources.base import Paper
+from snowcite.container import container
+from snowcite.domain.models import Paper
 from snowcite.tools.notes import (
     add_note,
     add_notes,
@@ -20,7 +19,7 @@ from snowcite.tools.review import set_review_status
 
 
 async def _seed_paper() -> int:
-    res = await persist_papers([Paper(source="arxiv", source_id="a", title="A")])
+    res = await container.papers.persist([Paper(source="arxiv", source_id="a", title="A")])
     return res["new_ids"][0]
 
 
@@ -112,7 +111,7 @@ async def test_delete_note(tmp_project: Path):
 async def test_delete_paper_cascades_to_notes(tmp_project: Path):
     pid = await _seed_paper()
     await add_note(type="claim", text="x", paper_id=pid)
-    async with get_connection() as conn:
+    async with container.db.connection() as conn:
         await conn.execute("DELETE FROM papers WHERE id = ?", (pid,))
         await conn.commit()
     assert await get_notes() == []
@@ -151,7 +150,7 @@ async def test_set_review_status_inline_notes(tmp_project: Path):
 @pytest.mark.asyncio
 async def test_set_review_status_inline_notes_rejects_multi_paper(tmp_project: Path):
     pid = await _seed_paper()
-    res2 = await persist_papers([Paper(source="arxiv", source_id="b", title="B")])
+    res2 = await container.papers.persist([Paper(source="arxiv", source_id="b", title="B")])
     pid2 = res2["new_ids"][0]
     res = await set_review_status(
         paper_ids=[pid, pid2],
