@@ -2,7 +2,7 @@
 
 import pytest
 
-from snowcite.templates import (
+from snowcite.render.templates import (
     TemplateNotFoundError,
     list_available,
     render_template,

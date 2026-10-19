@@ -8,8 +8,9 @@ import pytest
 
 from snowcite.container import container
 from snowcite.domain.models import Paper
+from snowcite.render.backends import backend_for_extension, get_backend
+from snowcite.render.compiler import Compiler
 from snowcite.tools.compile import (
-    _pdf_page_count,
     compile_pdf,
     estimate_pages,
     write_document,
@@ -175,20 +176,20 @@ async def test_compile_pdf_unknown_extension_errors(tmp_project: Path):
 def test_pdf_page_count_from_pages_count():
     # Synthetic PDF-ish bytes — `/Type /Pages ... /Count N` is what we parse.
     pdf = b"%PDF-1.7\n... /Type /Pages /Kids [...] /Count 7 ...\n%%EOF"
-    assert _pdf_page_count(pdf) == 7
+    assert Compiler.page_count(pdf) == 7
 
 
 def test_pdf_page_count_takes_max_when_multiple_pages_trees():
     # Nested Pages trees: root carries the total, intermediate nodes sum
     # subsets. Taking max gives the total regardless of tree shape.
     pdf = b"/Type /Pages /Count 3 ... /Type /Pages /Count 12 ..."
-    assert _pdf_page_count(pdf) == 12
+    assert Compiler.page_count(pdf) == 12
 
 
 def test_pdf_page_count_fallback_counts_page_entries():
     # No /Pages /Count — fall back to counting individual /Type /Page refs.
     pdf = b"/Type /Page\n/Type /Page\n/Type /Page\n/Type /Catalog"
-    assert _pdf_page_count(pdf) == 3
+    assert Compiler.page_count(pdf) == 3
 
 
 @pytest.mark.asyncio
@@ -205,3 +206,12 @@ async def test_compile_pdf_missing_file_errors(tmp_project: Path):
     r = await compile_pdf(str(tmp_project / "nope.tex"))
     assert r["success"] is False
     assert "file not found" in r["log"]
+
+
+def test_backends_render_headings_and_commands():
+    sections = [{"title": "Intro", "content": "Body"}]
+    assert get_backend("typst").render_sections(sections) == "= Intro\n\nBody"
+    assert get_backend("latex").render_sections(sections) == "\\section{Intro}\nBody"
+    assert get_backend("typst").compile_command(Path("a.typ")) == ["typst", "compile", "a.typ"]
+    assert backend_for_extension(".tex").name == "latex"
+    assert backend_for_extension(".pdf") is None

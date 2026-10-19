@@ -14,7 +14,7 @@ from snowcite.artifacts import (
 )
 from snowcite.container import container
 from snowcite.domain.models import Paper
-from snowcite.rendering import (
+from snowcite.render.snippets import (
     include_code,
     primary_sources_appendix,
 )

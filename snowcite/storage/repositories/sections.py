@@ -41,6 +41,14 @@ class SectionRepository:
         names += sorted(n for n in by_name if n not in names)
         return [{"title": n, "content": by_name[n]} for n in names]
 
+    async def count_drafts(self) -> int:
+        """Sections holding text, across the v0.3 and v0.2 stores."""
+        async with self._db.connection() as conn:
+            cur = await conn.execute("SELECT COUNT(*) FROM section_content")
+            legacy = (await cur.fetchone())[0]
+            cur = await conn.execute("SELECT COUNT(*) FROM sections WHERE draft != ''")
+            return legacy + (await cur.fetchone())[0]
+
     @staticmethod
     def _ordered_drafts(rows: list[Any]) -> list[DocumentSection]:
         children: dict[int | None, list[Any]] = {}

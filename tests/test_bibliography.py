@@ -1,6 +1,6 @@
 """Bibliography — BibTeX and Hayagriva generation."""
 
-from snowcite.bibliography import (
+from snowcite.render.bibliography import (
     build_cite_key_map,
     disambiguate_key,
     generate_bibtex,
